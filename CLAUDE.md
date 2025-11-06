@@ -86,6 +86,15 @@ uv run python -m pytest tests/ -v --tb=short
 
 # Integration tests (requires GOOGLE_API_KEY in .env)
 uv run python -m pytest tests/test_integration.py -v
+
+# Visual regression tests
+uv run python -m pytest tests/test_visual_regression.py -v
+
+# Update visual regression snapshots (after intentional styling changes)
+uv run python -m pytest tests/test_visual_regression.py --image-snapshot-update
+
+# Save diff images when visual tests fail (for debugging)
+uv run python -m pytest tests/test_visual_regression.py --image-snapshot-save-diff
 ```
 
 **Linting and Formatting:**
@@ -265,10 +274,51 @@ The project uses **Test-Driven Development (TDD)** methodology:
    - Auto-loads `.env` for all tests
    - Provides consistent test environment
 
+4. **Visual Regression Tests** (`tests/test_visual_regression.py`):
+   - Uses `pytest-image-snapshot` to detect visual changes
+   - Tests all 4 chart combinations: FD/BNR × bar/line
+   - Edge cases: single point, large datasets, decimals, zero values
+   - Baseline snapshots stored in `tests/snapshots/`
+   - Run independently: `pytest tests/test_visual_regression.py`
+
 ### Test File Naming Convention
 - Test files: `test_*.py`
 - Test classes: `TestClassName` or `Test*`
 - Test functions: `test_*`
+
+### Visual Regression Testing
+
+Visual regression tests ensure chart styling, brand colors, and layout remain consistent across changes:
+
+**How it works:**
+1. First run generates baseline snapshot images
+2. Subsequent runs compare generated charts against snapshots
+3. Tests fail if visual differences exceed threshold (0.1 = 10%)
+4. Diff images saved for debugging when `--image-snapshot-save-diff` is used
+
+**Updating snapshots after intentional changes:**
+```bash
+# After modifying brand colors or styling
+uv run python -m pytest tests/test_visual_regression.py --image-snapshot-update
+```
+
+**Debugging visual test failures:**
+```bash
+# Save diff images to see what changed
+uv run python -m pytest tests/test_visual_regression.py --image-snapshot-save-diff
+# Check tests/snapshots/ for *-diff.png files
+```
+
+**Coverage:**
+- **Standard charts**: FD bar, FD line, BNR bar, BNR line
+- **Edge cases**: Single data point, large datasets (12 points), decimal values, very small/large values, zero values, mixed ranges
+- **Total**: 11 visual regression tests
+
+**Important notes:**
+- Snapshots are committed to git as the baseline
+- Visual tests catch unintended changes from matplotlib updates
+- Threshold of 0.1 allows for minor rendering variations
+- Diff images are gitignored (tests/snapshots/*-diff.png)
 
 ## Common Development Tasks
 

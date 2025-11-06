@@ -17,6 +17,9 @@ wheels/
 chart-*.png
 chart-*.svg
 
+# Visual regression test diff images
+tests/snapshots/*-diff.png
+
 # pytest cache
 .pytest_cache/
 
