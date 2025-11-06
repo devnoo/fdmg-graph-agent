@@ -518,3 +518,83 @@ def test_conversational_mode_full_flow():
         # Cleanup
         if os.path.exists(result["final_filepath"]):
             os.remove(result["final_filepath"])
+
+
+def test_dutch_query_with_bnr_style():
+    """Test Dutch language query with BNR style and decimal commas."""
+    import json
+    import os
+
+    # Mock LLM responses
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        # First call: parse_intent
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Second call: extract_data with Dutch query and BNR style
+        extract_response = Mock()
+        extract_response.content = (
+            '{"data": ['
+            '{"label": "2020", "value": 25}, '
+            '{"label": "2021", "value": 26}, '
+            '{"label": "2022", "value": 26.5}, '
+            '{"label": "2023", "value": 27.3}, '
+            '{"label": "2024", "value": 27.9}, '
+            '{"label": "2025", "value": 29}'
+            '], '
+            '"type": null, "style": "bnr", "format": null}'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        graph = agent.create_graph()
+        initial_state = GraphState(
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Ik wil een grafiek die aangeeft hoeveel miljard studieschuld "
+                        "studenten hebben in de laatste jaren. De waarden zijn: "
+                        "2020 = 25, 2021 = 26, 2022=26,5, 2023 = 27,3, 2024 = 27,9, "
+                        "en 2025 = 29 gebruik bnr stijl"
+                    ),
+                }
+            ],
+            interaction_mode="conversational",
+            intent="unknown",
+            input_data=None,
+            chart_request={"type": None, "style": None, "format": None},
+            final_filepath=None,
+        )
+
+        result = graph.invoke(initial_state)
+
+        # Verify intent detected
+        assert result["intent"] == "make_chart"
+
+        # Verify BNR style extracted from Dutch text
+        assert result["chart_request"]["style"] == "bnr"
+        assert result["chart_request"]["type"] == "bar"  # Default
+        assert result["chart_request"]["format"] == "png"  # Default
+
+        # Verify data extracted correctly with 6 data points
+        data = json.loads(result["input_data"])
+        assert len(data) == 6
+        assert data[0] == {"label": "2020", "value": 25}
+        assert data[2] == {"label": "2022", "value": 26.5}
+        assert data[5] == {"label": "2025", "value": 29}
+
+        # Verify chart generated
+        assert result["final_filepath"] is not None
+        assert os.path.exists(result["final_filepath"])
+        assert result["final_filepath"].endswith(".png")
+
+        # Verify success message
+        assert "Chart saved:" in result["messages"][-1]["content"]
+
+        # Cleanup
+        if os.path.exists(result["final_filepath"]):
+            os.remove(result["final_filepath"])

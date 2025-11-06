@@ -1,10 +1,14 @@
 """LangGraph agent implementation for Graph Agent."""
 
 import os
+import logging
 from typing import Any
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph import StateGraph, END
 from graph_agent.state import GraphState
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 
 def get_llm() -> ChatGoogleGenerativeAI:
@@ -47,6 +51,7 @@ def parse_intent(state: GraphState) -> GraphState:
 
     # Get the last user message
     user_message = state["messages"][-1]["content"]
+    logger.debug(f"parse_intent: Analyzing message: {user_message[:100]}...")
 
     # Create a prompt for intent detection
     system_prompt = """Analyze the following user request and determine if it's about creating a chart or graph.
@@ -69,9 +74,11 @@ Your response (one word only):"""
     # Call LLM
     response = llm.invoke(prompt)
     intent = response.content.strip().lower()
+    logger.debug(f"parse_intent: LLM returned intent: {intent}")
 
     # Ensure intent is valid
     if intent not in ["make_chart", "off_topic"]:
+        logger.warning(f"parse_intent: Invalid intent '{intent}', defaulting to 'off_topic'")
         intent = "off_topic"  # Default to off_topic if unclear
 
     # Fallback: Check for obvious data patterns if LLM said off_topic
@@ -81,7 +88,10 @@ Your response (one word only):"""
         # Look for patterns like "A=10", "Monday: 4.1", "Q1 = 120"
         data_pattern = r"[A-Za-z0-9]+\s*[=:]\s*[0-9,.]+"
         if re.search(data_pattern, user_message):
+            logger.info("parse_intent: Detected data pattern, overriding to 'make_chart'")
             intent = "make_chart"
+
+    logger.info(f"parse_intent: Final intent: {intent}")
 
     # Update state
     return GraphState(
@@ -148,6 +158,7 @@ def extract_data(state: GraphState) -> GraphState:
 
     # Get the last user message
     user_message = state["messages"][-1]["content"]
+    logger.debug(f"extract_data: Processing message: {user_message[:100]}...")
 
     # Create prompt for data and parameter extraction
     extraction_prompt = """Extract data and chart parameters from the following text.
@@ -184,11 +195,14 @@ JSON object:"""
     prompt = extraction_prompt.format(text=user_message)
 
     # Call LLM
+    logger.debug("extract_data: Calling LLM for data and parameter extraction")
     response = llm.invoke(prompt)
     extracted_json = response.content.strip()
+    logger.debug(f"extract_data: Raw LLM response: {extracted_json[:200]}...")
 
     # Clean up response - remove markdown code blocks if present
     if extracted_json.startswith("```"):
+        logger.debug("extract_data: Cleaning markdown code blocks from response")
         lines = extracted_json.split("\n")
         extracted_json = "\n".join(lines[1:-1]) if len(lines) > 2 else extracted_json
         extracted_json = (
@@ -199,9 +213,11 @@ JSON object:"""
     try:
         parsed = json.loads(extracted_json)
         data = parsed.get("data", [])
+        logger.debug(f"extract_data: Parsed data: {data}")
 
         # If data is empty or invalid, create default
         if not data:
+            logger.warning("extract_data: No data extracted, using default")
             data = [{"label": "unknown", "value": 0}]
 
         # Convert data back to JSON string
@@ -211,9 +227,13 @@ JSON object:"""
         extracted_type = parsed.get("type")
         extracted_style = parsed.get("style")
         extracted_format = parsed.get("format")
+        logger.debug(f"extract_data: Extracted parameters from NL - type: {extracted_type}, "
+                    f"style: {extracted_style}, format: {extracted_format}")
 
-    except (json.JSONDecodeError, AttributeError):
+    except (json.JSONDecodeError, AttributeError) as e:
         # If invalid, create default structure
+        logger.error(f"extract_data: Failed to parse JSON: {e}")
+        logger.debug(f"extract_data: Problematic JSON: {extracted_json}")
         input_data = '[{"label": "unknown", "value": 0}]'
         extracted_type = None
         extracted_style = None
@@ -221,6 +241,7 @@ JSON object:"""
 
     # Get current chart_request or create default
     chart_request = state.get("chart_request") or {"type": None, "style": None, "format": None}
+    logger.debug(f"extract_data: Current chart_request: {chart_request}")
 
     # Merge extracted parameters with existing chart_request
     # Only override if extracted parameter is not None
@@ -238,6 +259,9 @@ JSON object:"""
         chart_request["style"] = "fd"
     if chart_request["format"] is None:
         chart_request["format"] = "png"
+
+    logger.info(f"extract_data: Final chart_request: type={chart_request['type']}, "
+               f"style={chart_request['style']}, format={chart_request['format']}")
 
     # Update state
     return GraphState(
@@ -308,12 +332,19 @@ def route_after_intent(state: GraphState) -> str:
     Returns:
         Name of next node to execute
     """
+    intent = state["intent"]
+    mode = state["interaction_mode"]
+    logger.debug(f"route_after_intent: Intent={intent}, Mode={mode}")
+
     if state["intent"] == "off_topic":
+        logger.info("route_after_intent: Routing to reject_task (off-topic)")
         return "reject_task"
     elif state["intent"] == "make_chart":
         # Proceed to extract_data for both direct and conversational modes
+        logger.info(f"route_after_intent: Routing to extract_data ({mode} mode)")
         return "extract_data"
     else:
+        logger.warning(f"route_after_intent: Unknown intent '{intent}', routing to reject_task")
         return "reject_task"
 
 
