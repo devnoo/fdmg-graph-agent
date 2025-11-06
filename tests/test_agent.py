@@ -49,15 +49,21 @@ def test_parse_intent_node_with_off_topic_request():
     assert result["intent"] == "off_topic"
 
 
-def test_reject_task_node_for_off_topic():
-    """Test reject_task node returns proper message for off-topic requests."""
+def test_report_error_node_for_off_topic():
+    """Test report_error node returns proper message for off-topic requests."""
     state = GraphState(
         messages=[{"role": "user", "content": "make me a sandwich"}],
         interaction_mode="direct",
         intent="off_topic",
+        has_file=False,
+        config_change=None,
+        input_data=None,
+        chart_request=None,
+        missing_params=None,
+        final_filepath=None,
     )
 
-    result = agent.reject_task(state)
+    result = agent.report_error(state)
 
     assert len(result["messages"]) == 2
     assert result["messages"][1]["role"] == "assistant"
@@ -65,24 +71,6 @@ def test_reject_task_node_for_off_topic():
         "I can only help you create charts. Please ask me to make a bar or line chart."
     )
     assert result["messages"][1]["content"] == expected_msg
-
-
-def test_reject_task_node_for_chart_request():
-    """Test reject_task node returns 'not implemented' message for chart requests."""
-    state = GraphState(
-        messages=[{"role": "user", "content": "create a bar chart"}],
-        interaction_mode="direct",
-        intent="make_chart",
-    )
-
-    result = agent.reject_task(state)
-
-    assert len(result["messages"]) == 2
-    assert result["messages"][1]["role"] == "assistant"
-    assert (
-        result["messages"][1]["content"]
-        == "Chart generation is not yet implemented. Check back soon!"
-    )
 
 
 def test_graph_compilation():
@@ -263,18 +251,21 @@ def test_generate_chart_tool_node():
 
 
 def test_route_after_intent_off_topic():
-    """Test route_after_intent routes off-topic to reject_task."""
+    """Test route_after_intent routes off-topic to report_error."""
     state = GraphState(
         messages=[{"role": "user", "content": "test"}],
         interaction_mode="direct",
         intent="off_topic",
+        has_file=False,
+        config_change=None,
         input_data=None,
         chart_request=None,
+        missing_params=None,
         final_filepath=None,
     )
 
     result = agent.route_after_intent(state)
-    assert result == "reject_task"
+    assert result == "report_error"
 
 
 def test_route_after_intent_make_chart_with_request():

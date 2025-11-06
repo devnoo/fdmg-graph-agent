@@ -286,6 +286,94 @@ class TestAskClarification:
         assert len(result["messages"]) == 1
 
 
+class TestReportError:
+    """Test the report_error node (Story 8)."""
+
+    def test_report_error_for_off_topic(self):
+        """Test error message for off-topic requests."""
+        state = GraphState(
+            messages=[{"role": "user", "content": "make me a sandwich"}],
+            interaction_mode="direct",
+            intent="off_topic",
+            has_file=False,
+            config_change=None,
+            input_data=None,
+            chart_request=None,
+            missing_params=None,
+            final_filepath=None,
+        )
+
+        result = agent.report_error(state)
+
+        assert len(result["messages"]) == 2
+        assert result["messages"][1]["role"] == "assistant"
+        assert "I can only help you create charts" in result["messages"][1]["content"]
+
+    def test_report_error_for_missing_type(self):
+        """Test error message when only chart type is missing."""
+        state = GraphState(
+            messages=[{"role": "user", "content": "chart: A=10, B=20"}],
+            interaction_mode="direct",
+            intent="make_chart",
+            has_file=False,
+            config_change=None,
+            input_data=json.dumps([{"label": "A", "value": 10}]),
+            chart_request={"type": None, "style": "fd", "format": "png"},
+            missing_params=["type"],
+            final_filepath=None,
+        )
+
+        result = agent.report_error(state)
+
+        assert len(result["messages"]) == 2
+        assert result["messages"][1]["role"] == "assistant"
+        assert "Error: Chart type is ambiguous" in result["messages"][1]["content"]
+        assert "--type bar or --type line" in result["messages"][1]["content"]
+
+    def test_report_error_for_missing_style(self):
+        """Test error message when only style is missing."""
+        state = GraphState(
+            messages=[{"role": "user", "content": "chart: A=10, B=20"}],
+            interaction_mode="direct",
+            intent="make_chart",
+            has_file=False,
+            config_change=None,
+            input_data=json.dumps([{"label": "A", "value": 10}]),
+            chart_request={"type": "bar", "style": None, "format": "png"},
+            missing_params=["style"],
+            final_filepath=None,
+        )
+
+        result = agent.report_error(state)
+
+        assert len(result["messages"]) == 2
+        assert result["messages"][1]["role"] == "assistant"
+        assert "Error: Brand style not specified" in result["messages"][1]["content"]
+        assert "--style fd or --style bnr" in result["messages"][1]["content"]
+
+    def test_report_error_for_multiple_missing(self):
+        """Test error message when both type and style are missing."""
+        state = GraphState(
+            messages=[{"role": "user", "content": "chart: A=10, B=20"}],
+            interaction_mode="direct",
+            intent="make_chart",
+            has_file=False,
+            config_change=None,
+            input_data=json.dumps([{"label": "A", "value": 10}]),
+            chart_request={"type": None, "style": None, "format": "png"},
+            missing_params=["type", "style"],
+            final_filepath=None,
+        )
+
+        result = agent.report_error(state)
+
+        assert len(result["messages"]) == 2
+        assert result["messages"][1]["role"] == "assistant"
+        assert "Error: Missing required parameters:" in result["messages"][1]["content"]
+        assert "Chart type: use --type bar or --type line" in result["messages"][1]["content"]
+        assert "Brand style: use --style fd or --style bnr" in result["messages"][1]["content"]
+
+
 class TestRouteAfterResolve:
     """Test the route_after_resolve routing function."""
 
@@ -323,8 +411,8 @@ class TestRouteAfterResolve:
         route = agent.route_after_resolve(state)
         assert route == "generate_chart"
 
-    def test_direct_mode_with_missing_params_proceeds_anyway(self):
-        """Test that direct mode proceeds even with missing params (temporary behavior)."""
+    def test_direct_mode_with_missing_params_routes_to_error(self):
+        """Test that direct mode routes to report_error when params are missing (Story 8)."""
         state = GraphState(
             messages=[{"role": "user", "content": "chart"}],
             interaction_mode="direct",
@@ -338,5 +426,5 @@ class TestRouteAfterResolve:
         )
 
         route = agent.route_after_resolve(state)
-        # For now, direct mode proceeds to generation (Story 8 will add error handling)
-        assert route == "generate_chart"
+        # Story 8: Direct mode routes to report_error for missing params
+        assert route == "report_error"

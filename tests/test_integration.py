@@ -18,7 +18,8 @@ class TestIntegrationWithRealLLM:
         runner = CliRunner()
         result = runner.invoke(main, ["make me a sandwich"])
 
-        assert result.exit_code == 0
+        # Story 8: Off-topic requests exit with code 1
+        assert result.exit_code == 1
         assert "can only help you create charts" in result.output.lower()
 
     def test_direct_mode_chart_request_real_llm(self):
@@ -257,4 +258,131 @@ class TestAmbiguityResolution:
         # Should NOT ask for type (time-series defaults to line)
         assert "what type" not in result.output.lower()
         # Should generate chart directly
+        assert "chart saved:" in result.output.lower()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("GOOGLE_API_KEY"),
+    reason="GOOGLE_API_KEY not set - skipping integration tests",
+)
+class TestDirectModeExitCodes:
+    """Integration tests for direct mode exit codes (Story 8)."""
+
+    def test_missing_type_exits_with_error(self, tmp_path, monkeypatch):
+        """Test that missing chart type in direct mode exits with code 1."""
+        # Use temp config directory with no defaults
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        runner = CliRunner()
+        # Categorical data without --type
+        result = runner.invoke(main, ["chart: Mon=10, Tue=15", "--style", "fd"])
+
+        # Should exit with error code 1
+        assert result.exit_code == 1
+        # Error message should mention type
+        assert "chart type is ambiguous" in result.output.lower()
+
+    def test_missing_style_exits_with_error(self, tmp_path, monkeypatch):
+        """Test that missing style in direct mode exits with code 1."""
+        # Use temp config directory with no defaults
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        runner = CliRunner()
+        # Categorical data without --style
+        result = runner.invoke(main, ["chart: A=10, B=20", "--type", "bar"])
+
+        # Should exit with error code 1
+        assert result.exit_code == 1
+        # Error message should mention style
+        assert "brand style not specified" in result.output.lower()
+
+    def test_multiple_missing_exits_with_error(self, tmp_path, monkeypatch):
+        """Test that multiple missing params in direct mode exits with code 1."""
+        # Use temp config directory with no defaults
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        runner = CliRunner()
+        # Categorical data without --type or --style
+        result = runner.invoke(main, ["chart: Mon=10, Tue=15"])
+
+        # Should exit with error code 1
+        assert result.exit_code == 1
+        # Error message should mention both
+        assert "missing required parameters" in result.output.lower()
+
+    def test_success_with_all_params_exits_zero(self, tmp_path, monkeypatch):
+        """Test that successful chart generation exits with code 0."""
+        # Use temp config directory
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        runner = CliRunner()
+        # All params provided
+        result = runner.invoke(main, ["chart: A=10, B=20", "--style", "fd", "--type", "bar"])
+
+        # Should exit with success code 0
+        assert result.exit_code == 0
+        assert "chart saved:" in result.output.lower()
+
+    def test_success_with_defaults_exits_zero(self, tmp_path, monkeypatch):
+        """Test that chart generation with defaults exits with code 0."""
+        # Use temp config directory with defaults
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        # Set defaults
+        from graph_agent.config import save_user_preferences
+        save_user_preferences(default_style="bnr")
+
+        runner = CliRunner()
+        # Only provide type, style comes from default
+        result = runner.invoke(main, ["chart: A=10, B=20", "--type", "bar"])
+
+        # Should exit with success code 0
+        assert result.exit_code == 0
+        assert "chart saved:" in result.output.lower()
+
+    def test_time_series_auto_default_exits_zero(self, tmp_path, monkeypatch):
+        """Test that time-series auto-defaulting to line exits with code 0."""
+        # Use temp config directory with default style
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        # Set default style
+        from graph_agent.config import save_user_preferences
+        save_user_preferences(default_style="fd")
+
+        runner = CliRunner()
+        # Time-series data without --type (should auto-default to line)
+        result = runner.invoke(main, ["chart: Jan=100, Feb=120, Mar=110"])
+
+        # Should exit with success code 0
+        assert result.exit_code == 0
         assert "chart saved:" in result.output.lower()

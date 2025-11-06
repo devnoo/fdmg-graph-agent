@@ -165,32 +165,63 @@ JSON response:"""
         config_change=config_change,
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
+        missing_params=state.get("missing_params"),
         final_filepath=state.get("final_filepath"),
     )
 
 
-def reject_task(state: GraphState) -> GraphState:
+def report_error(state: GraphState) -> GraphState:
     """
-    Generate appropriate response based on detected intent.
+    Generate error message based on error type.
 
-    For off-topic requests: Returns polite rejection message
-    For chart requests: Returns 'not yet implemented' message
+    This node handles:
+    1. Off-topic requests (from Story 2)
+    2. Ambiguity errors in direct mode (from Story 8)
+
+    For ambiguity errors, the message clearly states what's missing
+    and how to fix the command.
 
     Args:
-        state: Current graph state with intent populated
+        state: Current graph state with intent and missing_params populated
 
     Returns:
-        Updated state with assistant response added to messages
+        Updated state with error message added to messages
     """
-    if state["intent"] == "off_topic":
-        response = "I can only help you create charts. Please ask me to make a bar or line chart."
-    elif state["intent"] == "make_chart":
-        response = "Chart generation is not yet implemented. Check back soon!"
-    else:
-        # Fallback for unknown intent
-        response = "I can only help you create charts. Please ask me to make a bar or line chart."
+    intent = state.get("intent")
+    missing = state.get("missing_params", [])
 
-    # Add assistant response to messages
+    # Off-topic requests (existing from Story 2)
+    if intent == "off_topic":
+        response = "I can only help you create charts. Please ask me to make a bar or line chart."
+        logger.info("report_error: Off-topic request")
+
+    # Ambiguity errors (new for Story 8)
+    elif missing:
+        if len(missing) == 1:
+            if missing[0] == "type":
+                response = "Error: Chart type is ambiguous. Please specify using --type bar or --type line"
+                logger.info("report_error: Missing chart type")
+            elif missing[0] == "style":
+                response = "Error: Brand style not specified. Please use --style fd or --style bnr, or set a default style."
+                logger.info("report_error: Missing brand style")
+            else:
+                response = "Error: Missing required parameter."
+                logger.warning(f"report_error: Unknown missing param: {missing[0]}")
+        else:
+            # Multiple missing parameters
+            response = "Error: Missing required parameters:\n"
+            if "type" in missing:
+                response += "  - Chart type: use --type bar or --type line\n"
+            if "style" in missing:
+                response += "  - Brand style: use --style fd or --style bnr"
+            logger.info(f"report_error: Multiple missing params: {missing}")
+
+    # Fallback
+    else:
+        response = "Error: Unable to process request."
+        logger.warning("report_error: Called with no clear error condition")
+
+    # Add error message to messages
     updated_messages = state["messages"] + [{"role": "assistant", "content": response}]
 
     return GraphState(
@@ -201,6 +232,7 @@ def reject_task(state: GraphState) -> GraphState:
         config_change=state.get("config_change"),
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
+        missing_params=state.get("missing_params"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -253,6 +285,7 @@ def handle_config(state: GraphState) -> GraphState:
         config_change=config_change,
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
+        missing_params=state.get("missing_params"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -409,8 +442,10 @@ JSON object:"""
         interaction_mode=state["interaction_mode"],
         intent=state["intent"],
         has_file=state.get("has_file", False),
+        config_change=state.get("config_change"),
         input_data=input_data,
         chart_request=chart_request,
+        missing_params=state.get("missing_params"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -641,6 +676,7 @@ def generate_chart_tool(state: GraphState) -> GraphState:
         config_change=state.get("config_change"),
         input_data=state["input_data"],
         chart_request=state["chart_request"],
+        missing_params=state.get("missing_params"),
         final_filepath=filepath,
     )
 
@@ -700,8 +736,10 @@ File path:"""
             interaction_mode=state["interaction_mode"],
             intent=state["intent"],
             has_file=False,
+            config_change=state.get("config_change"),
             input_data=state.get("input_data"),
             chart_request=state.get("chart_request"),
+            missing_params=state.get("missing_params"),
             final_filepath=state.get("final_filepath"),
         )
 
@@ -789,8 +827,10 @@ JSON object:"""
             interaction_mode=state["interaction_mode"],
             intent=state["intent"],
             has_file=True,
+            config_change=state.get("config_change"),
             input_data=data_json,
             chart_request=chart_request,
+            missing_params=state.get("missing_params"),
             final_filepath=state.get("final_filepath"),
         )
 
@@ -808,8 +848,10 @@ JSON object:"""
             interaction_mode=state["interaction_mode"],
             intent="off_topic",  # Set to off_topic to end conversation
             has_file=state.get("has_file", False),
+            config_change=state.get("config_change"),
             input_data=state.get("input_data"),
             chart_request=state.get("chart_request"),
+            missing_params=state.get("missing_params"),
             final_filepath=state.get("final_filepath"),
         )
 
@@ -826,7 +868,7 @@ def route_after_intent(state: GraphState) -> str:
     - Route to handle_config to update user preferences
 
     For off_topic intent:
-    - Route to reject_task
+    - Route to report_error
 
     Args:
         state: Current graph state with intent and has_file populated
@@ -840,8 +882,8 @@ def route_after_intent(state: GraphState) -> str:
     logger.debug(f"route_after_intent: Intent={intent}, HasFile={has_file}, Mode={mode}")
 
     if intent == "off_topic":
-        logger.info("route_after_intent: Routing to reject_task (off-topic)")
-        return "reject_task"
+        logger.info("route_after_intent: Routing to report_error (off-topic)")
+        return "report_error"
     elif intent == "set_config":
         logger.info("route_after_intent: Routing to handle_config (config change)")
         return "handle_config"
@@ -853,8 +895,8 @@ def route_after_intent(state: GraphState) -> str:
             logger.info(f"route_after_intent: Routing to extract_data (text-based, {mode} mode)")
             return "extract_data"
     else:
-        logger.warning(f"route_after_intent: Unknown intent '{intent}', routing to reject_task")
-        return "reject_task"
+        logger.warning(f"route_after_intent: Unknown intent '{intent}', routing to report_error")
+        return "report_error"
 
 
 def route_after_resolve(state: GraphState) -> str:
@@ -863,7 +905,7 @@ def route_after_resolve(state: GraphState) -> str:
 
     If parameters are missing:
     - Conversational mode: Ask clarification questions
-    - Direct mode: Would fail (handled in Story 8)
+    - Direct mode: Report error and exit (Story 8)
 
     If all parameters present:
     - Continue to chart generation
@@ -884,11 +926,9 @@ def route_after_resolve(state: GraphState) -> str:
             logger.info("route_after_resolve: Routing to ask_clarification (conversational mode)")
             return "ask_clarification"
         else:
-            # Direct mode with missing params - would fail
-            # For now, route to generate_chart which will use defaults
-            # Story 8 will add proper error handling
-            logger.warning("route_after_resolve: Missing params in direct mode, proceeding anyway")
-            return "generate_chart"
+            # Direct mode with missing params - fail with error
+            logger.info("route_after_resolve: Routing to report_error (direct mode with missing params)")
+            return "report_error"
     else:
         logger.info("route_after_resolve: All params present, routing to generate_chart")
         return "generate_chart"
@@ -901,19 +941,21 @@ def create_graph() -> Any:
     The workflow consists of:
     1. parse_intent: Analyzes user request and determines intent and file presence
     2. Conditional routing:
-       - If off_topic: reject_task -> END
+       - If off_topic: report_error -> END
        - If set_config: handle_config -> END
        - If make_chart + has_file: call_data_tool -> resolve_ambiguity -> ...
        - If make_chart + no file: extract_data -> resolve_ambiguity -> ...
-    3. handle_config: Handles user preference changes (default style/format)
-    4. call_data_tool: Parses Excel file and extracts data
-    5. extract_data: Extracts structured data from natural language
-    6. resolve_ambiguity: Checks for missing parameters and applies defaults
-    7. Conditional routing after resolve_ambiguity:
+    3. report_error: Handles off-topic requests and ambiguity errors (Story 8)
+    4. handle_config: Handles user preference changes (default style/format)
+    5. call_data_tool: Parses Excel file and extracts data
+    6. extract_data: Extracts structured data from natural language
+    7. resolve_ambiguity: Checks for missing parameters and applies defaults
+    8. Conditional routing after resolve_ambiguity:
        - If missing params + conversational: ask_clarification -> END (return to REPL)
+       - If missing params + direct: report_error -> END (Story 8)
        - If all params present: generate_chart -> END
-    8. ask_clarification: Generates clarifying questions for missing parameters
-    9. generate_chart: Creates chart file using matplotlib
+    9. ask_clarification: Generates clarifying questions for missing parameters
+    10. generate_chart: Creates chart file using matplotlib
 
     Returns:
         Compiled LangGraph workflow
@@ -922,12 +964,12 @@ def create_graph() -> Any:
 
     # Add nodes
     workflow.add_node("parse_intent", parse_intent)
-    workflow.add_node("reject_task", reject_task)
+    workflow.add_node("report_error", report_error)
     workflow.add_node("handle_config", handle_config)
     workflow.add_node("call_data_tool", call_data_tool)
     workflow.add_node("extract_data", extract_data)
-    workflow.add_node("resolve_ambiguity", resolve_ambiguity)  # NEW: Ambiguity resolution
-    workflow.add_node("ask_clarification", ask_clarification)  # NEW: Ask questions
+    workflow.add_node("resolve_ambiguity", resolve_ambiguity)
+    workflow.add_node("ask_clarification", ask_clarification)
     workflow.add_node("generate_chart", generate_chart_tool)
 
     # Set entry point
@@ -938,7 +980,7 @@ def create_graph() -> Any:
         "parse_intent",
         route_after_intent,
         {
-            "reject_task": "reject_task",
+            "report_error": "report_error",
             "handle_config": "handle_config",
             "call_data_tool": "call_data_tool",
             "extract_data": "extract_data",
@@ -946,23 +988,24 @@ def create_graph() -> Any:
     )
 
     # Add edges for data extraction -> ambiguity resolution
-    workflow.add_edge("call_data_tool", "resolve_ambiguity")  # NEW
-    workflow.add_edge("extract_data", "resolve_ambiguity")     # NEW
+    workflow.add_edge("call_data_tool", "resolve_ambiguity")
+    workflow.add_edge("extract_data", "resolve_ambiguity")
 
     # Add conditional routing after resolve_ambiguity
     workflow.add_conditional_edges(
         "resolve_ambiguity",
         route_after_resolve,
         {
-            "ask_clarification": "ask_clarification",  # NEW
+            "ask_clarification": "ask_clarification",
+            "report_error": "report_error",  # NEW: Direct mode ambiguity errors
             "generate_chart": "generate_chart",
         },
     )
 
     # Add terminal edges
-    workflow.add_edge("reject_task", END)
+    workflow.add_edge("report_error", END)
     workflow.add_edge("handle_config", END)
-    workflow.add_edge("ask_clarification", END)  # NEW: Returns to REPL for user response
+    workflow.add_edge("ask_clarification", END)  # Returns to REPL for user response
     workflow.add_edge("generate_chart", END)
 
     # Compile and return

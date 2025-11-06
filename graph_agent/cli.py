@@ -1,5 +1,6 @@
 """CLI entry point for Graph Agent."""
 
+import sys
 import logging
 import click
 from dotenv import load_dotenv
@@ -56,9 +57,22 @@ def run_direct_mode(
     result = graph.invoke(initial_state)
     logger.debug(f"Graph execution complete. Intent: {result['intent']}")
 
-    # Print assistant response
+    # Get assistant response
     assistant_message = result["messages"][-1]["content"]
-    print(assistant_message)
+
+    # Check if this is an error (either starts with "Error:" or is a rejection message)
+    is_error = assistant_message.startswith("Error:") or assistant_message.startswith("I can only")
+
+    if is_error:
+        # Print error to stderr and exit with code 1
+        print(assistant_message, file=sys.stderr)
+        logger.info("Direct mode failed with error")
+        sys.exit(1)
+    else:
+        # Success: print to stdout and exit with code 0
+        print(assistant_message)
+        logger.info("Direct mode completed successfully")
+        sys.exit(0)
 
 
 def run_conversational_mode() -> None:

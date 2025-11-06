@@ -1,10 +1,10 @@
 ---
 id: task-8
 title: 'Story 8: Ambiguity Handling - Direct Mode'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-11-06 13:31'
-updated_date: '2025-11-06 13:35'
+updated_date: '2025-11-06 22:27'
 labels:
   - phase-4
   - ambiguity
@@ -162,16 +162,16 @@ $ echo $?
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Direct mode fails with error when chart type is missing (categorical data)
-- [ ] #2 Direct mode fails with error when style is missing and no default set
-- [ ] #3 Error messages clearly state what's missing and how to fix it
-- [ ] #4 Multiple missing params are listed in a single error message
-- [ ] #5 Exit code is 1 when command fails due to ambiguity
-- [ ] #6 Exit code is 0 when command succeeds
-- [ ] #7 Time-series data defaults to line chart without error in direct mode
-- [ ] #8 When defaults are set, direct mode uses them without error
-- [ ] #9 Format never causes ambiguity error (always defaults to PNG)
-- [ ] #10 Error output goes to stderr, not stdout
+- [x] #1 Direct mode fails with error when chart type is missing (categorical data)
+- [x] #2 Direct mode fails with error when style is missing and no default set
+- [x] #3 Error messages clearly state what's missing and how to fix it
+- [x] #4 Multiple missing params are listed in a single error message
+- [x] #5 Exit code is 1 when command fails due to ambiguity
+- [x] #6 Exit code is 0 when command succeeds
+- [x] #7 Time-series data defaults to line chart without error in direct mode
+- [x] #8 When defaults are set, direct mode uses them without error
+- [x] #9 Format never causes ambiguity error (always defaults to PNG)
+- [x] #10 Error output goes to stderr, not stdout
 <!-- AC:END -->
 
 ## Implementation Plan
