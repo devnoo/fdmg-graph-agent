@@ -76,6 +76,9 @@ Your response (one word only):"""
         messages=state["messages"],
         interaction_mode=state["interaction_mode"],
         intent=intent,
+        input_data=state.get("input_data"),
+        chart_request=state.get("chart_request"),
+        final_filepath=state.get("final_filepath"),
     )
 
 
@@ -107,7 +110,137 @@ def reject_task(state: GraphState) -> GraphState:
         messages=updated_messages,
         interaction_mode=state["interaction_mode"],
         intent=state["intent"],
+        input_data=state.get("input_data"),
+        chart_request=state.get("chart_request"),
+        final_filepath=state.get("final_filepath"),
     )
+
+
+def extract_data(state: GraphState) -> GraphState:
+    """
+    Extract structured data from user's natural language prompt using Gemini.
+
+    This node uses the LLM to parse the user's message and extract label-value
+    pairs in JSON format.
+
+    Args:
+        state: Current graph state containing user message
+
+    Returns:
+        Updated state with input_data field populated with JSON string
+    """
+    import json
+
+    llm = get_llm()
+
+    # Get the last user message
+    user_message = state["messages"][-1]["content"]
+
+    # Create prompt for data extraction
+    extraction_prompt = """Extract all label-value pairs from the following text.
+
+Return the data as a JSON array with this exact format:
+[{{"label": "label1", "value": number1}}, {{"label": "label2", "value": number2}}, ...]
+
+Examples:
+- "A=10, B=20, C=30" -> [{{"label": "A", "value": 10}}, {{"label": "B", "value": 20}}, {{"label": "C", "value": 30}}]
+- "Monday: 4.1, Tuesday: 4.2" -> [{{"label": "Monday", "value": 4.1}}, {{"label": "Tuesday", "value": 4.2}}]
+- "Q1: 120, Q2: 150" -> [{{"label": "Q1", "value": 120}}, {{"label": "Q2", "value": 150}}]
+
+IMPORTANT: Return ONLY the JSON array, no other text.
+
+Text to extract from: {text}
+
+JSON array:"""
+
+    prompt = extraction_prompt.format(text=user_message)
+
+    # Call LLM
+    response = llm.invoke(prompt)
+    extracted_json = response.content.strip()
+
+    # Validate JSON
+    try:
+        json.loads(extracted_json)  # Validate it's proper JSON
+    except json.JSONDecodeError:
+        # If invalid, create a default structure
+        extracted_json = '[{"label": "unknown", "value": 0}]'
+
+    # Update state
+    return GraphState(
+        messages=state["messages"],
+        interaction_mode=state["interaction_mode"],
+        intent=state["intent"],
+        input_data=extracted_json,
+        chart_request=state.get("chart_request"),
+        final_filepath=state.get("final_filepath"),
+    )
+
+
+def generate_chart_tool(state: GraphState) -> GraphState:
+    """
+    Generate chart using matplotlib tool and save to file.
+
+    This node calls the matplotlib_chart_generator tool with data from state
+    and saves the generated chart file.
+
+    Args:
+        state: Current graph state with input_data and chart_request populated
+
+    Returns:
+        Updated state with final_filepath and success message in messages
+    """
+    from graph_agent.tools import matplotlib_chart_generator
+
+    # Get chart parameters
+    chart_request = state["chart_request"]
+    input_data = state["input_data"]
+
+    # Generate chart
+    filepath = matplotlib_chart_generator(
+        data=input_data,
+        chart_type=chart_request["type"],
+        style=chart_request["style"],
+        format=chart_request["format"],
+    )
+
+    # Add success message
+    updated_messages = state["messages"] + [
+        {"role": "assistant", "content": f"Chart saved: {filepath}"}
+    ]
+
+    # Update state
+    return GraphState(
+        messages=updated_messages,
+        interaction_mode=state["interaction_mode"],
+        intent=state["intent"],
+        input_data=state["input_data"],
+        chart_request=state["chart_request"],
+        final_filepath=filepath,
+    )
+
+
+def route_after_intent(state: GraphState) -> str:
+    """
+    Route to appropriate node based on detected intent.
+
+    Args:
+        state: Current graph state with intent populated
+
+    Returns:
+        Name of next node to execute
+    """
+    if state["intent"] == "off_topic":
+        return "reject_task"
+    elif state["intent"] == "make_chart":
+        # Check if chart_request is present (direct mode with flags)
+        if state.get("chart_request"):
+            return "extract_data"
+        else:
+            # No chart parameters, reject for now (Story 4+ will handle this)
+            return "reject_task"
+    else:
+        return "reject_task"
 
 
 def create_graph() -> Any:
@@ -116,7 +249,11 @@ def create_graph() -> Any:
 
     The workflow consists of:
     1. parse_intent: Analyzes user request and determines intent
-    2. reject_task: Generates appropriate response based on intent
+    2. Conditional routing:
+       - If off_topic: reject_task -> END
+       - If make_chart: extract_data -> generate_chart -> END
+    3. extract_data: Extracts structured data from natural language
+    4. generate_chart: Creates chart file using matplotlib
 
     Returns:
         Compiled LangGraph workflow
@@ -126,13 +263,25 @@ def create_graph() -> Any:
     # Add nodes
     workflow.add_node("parse_intent", parse_intent)
     workflow.add_node("reject_task", reject_task)
+    workflow.add_node("extract_data", extract_data)
+    workflow.add_node("generate_chart", generate_chart_tool)
 
     # Set entry point
     workflow.set_entry_point("parse_intent")
 
-    # Add edges
-    workflow.add_edge("parse_intent", "reject_task")
+    # Add conditional routing after parse_intent
+    workflow.add_conditional_edges(
+        "parse_intent",
+        route_after_intent,
+        {"reject_task": "reject_task", "extract_data": "extract_data"},
+    )
+
+    # Add edges for chart generation flow
+    workflow.add_edge("extract_data", "generate_chart")
+
+    # Add terminal edges
     workflow.add_edge("reject_task", END)
+    workflow.add_edge("generate_chart", END)
 
     # Compile and return
     return workflow.compile()

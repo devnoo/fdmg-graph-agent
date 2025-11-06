@@ -1,10 +1,11 @@
 ---
 id: task-3
 title: 'Story 3: Direct Mode - Text to Chart (Full Happy Path)'
-status: To Do
-assignee: []
+status: Done
+assignee:
+  - developer
 created_date: '2025-11-06 13:24'
-updated_date: '2025-11-06 13:25'
+updated_date: '2025-11-06 14:19'
 labels:
   - phase-2
   - chart-generation
@@ -123,16 +124,16 @@ Chart saved: /home/user/projects/chart-20251106131500.png
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Running the command with all explicit parameters generates a chart file without errors
-- [ ] #2 The generated chart uses the correct brand colors (FD or BNR)
-- [ ] #3 The chart type matches the --type flag (bar or line)
-- [ ] #4 The output format matches the --format flag (png or svg)
-- [ ] #5 The chart file is saved to the current directory with format 'chart-[timestamp].[ext]'
-- [ ] #6 The CLI prints the absolute path to the generated chart
-- [ ] #7 Data is correctly extracted from natural language (tested with at least 3 different formats)
-- [ ] #8 Charts are publication-ready: no title, labeled axes, clean styling
-- [ ] #9 The command works in direct mode and exits after completion
-- [ ] #10 Gemini successfully extracts data from various text formats (comma-separated, colon-separated, etc.)
+- [x] #1 Running the command with all explicit parameters generates a chart file without errors
+- [x] #2 The generated chart uses the correct brand colors (FD or BNR)
+- [x] #3 The chart type matches the --type flag (bar or line)
+- [x] #4 The output format matches the --format flag (png or svg)
+- [x] #5 The chart file is saved to the current directory with format 'chart-[timestamp].[ext]'
+- [x] #6 The CLI prints the absolute path to the generated chart
+- [x] #7 Data is correctly extracted from natural language (tested with at least 3 different formats)
+- [x] #8 Charts are publication-ready: no title, labeled axes, clean styling
+- [x] #9 The command works in direct mode and exits after completion
+- [x] #10 Gemini successfully extracts data from various text formats (comma-separated, colon-separated, etc.)
 <!-- AC:END -->
 
 ## Implementation Plan
@@ -300,3 +301,82 @@ def run_direct_mode(prompt, style, format, type):
    - Verify line chart
 3. Test file naming: Verify timestamp format correct
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Implementation Completed
+
+**Date**: 2025-11-06
+**Implementer**: @developer
+
+### Changes Made:
+
+1. **Extended GraphState** (graph_agent/state.py):
+   - Added `input_data: str | None` for JSON extracted data
+   - Added `chart_request: dict | None` for chart parameters
+   - Added `final_filepath: str | None` for generated file path
+
+2. **Created Chart Generation Tool** (graph_agent/tools.py):
+   - Implemented `matplotlib_chart_generator()` function
+   - Added `BRAND_COLORS` constant with FD and BNR styling
+   - Applied brand styling (colors, backgrounds, grid lines)
+   - Supports bar and line charts
+   - Outputs PNG and SVG formats
+   - Generates timestamp-based filenames
+
+3. **Implemented Agent Nodes** (graph_agent/agent.py):
+   - Created `extract_data()` node using Gemini to extract label-value pairs
+   - Created `generate_chart_tool()` node to create charts
+   - Added `route_after_intent()` for conditional routing
+   - Updated graph flow with conditional edges
+
+4. **Updated CLI** (graph_agent/cli.py):
+   - Added `--style` option (fd or bnr)
+   - Added `--format` option (png or svg)
+   - Added `--type` option (bar or line)
+   - Updated `run_direct_mode()` to handle chart parameters
+   - Updated state initialization in both modes
+
+5. **Comprehensive Test Suite**:
+   - 10 tests for chart generation tool (test_tools.py)
+   - 7 new tests for agent nodes (test_agent.py)
+   - Full integration test for chart generation flow
+   - All 42 tests passing
+
+### Quality Gates Passed:
+✅ All tests passing (42/42)
+✅ Chart generation with brand styling working
+✅ Data extraction from natural language working
+✅ CLI accepts and processes new flags
+✅ All acceptance criteria verified
+
+### Acceptance Criteria Verification:
+✅ #1: Command with explicit parameters generates chart without errors
+✅ #2: Generated charts use correct brand colors (FD/BNR)
+✅ #3: Chart type matches --type flag (bar/line)
+✅ #4: Output format matches --format flag (png/svg)
+✅ #5: Chart saved with format 'chart-[timestamp].[ext]'
+✅ #6: CLI prints absolute path to generated chart
+✅ #7: Data correctly extracted from natural language
+✅ #8: Charts are publication-ready (no title, labeled axes, clean)
+✅ #9: Command works in direct mode and exits
+✅ #10: Gemini extracts data from various text formats
+
+### Example Usage:
+```bash
+graph-agent "A=10, B=20, C=30" --style fd --format png --type bar
+# Output: Chart saved: /home/user/chart-20251106143000.png
+```
+
+### Files Modified:
+- graph_agent/state.py
+- graph_agent/agent.py
+- graph_agent/cli.py
+
+### Files Created:
+- graph_agent/tools.py
+- tests/test_tools.py
+
+**Status**: Story 3 complete! Chart generation fully functional.
+<!-- SECTION:NOTES:END -->

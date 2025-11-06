@@ -45,21 +45,66 @@ Goodbye!
 
 Execute a single command and exit:
 
+**Simple chart generation (uses defaults: FD style, PNG format, bar chart):**
 ```bash
-graph-agent "create a bar chart"
-# Output: Chart generation is not yet implemented. Check back soon!
+graph-agent "Maandag=4.1, Dinsdag=4.2, Woensdag=4.4"
+# Output: Chart saved: /home/user/chart-20251106143000.png
+```
 
+**Multi-line data (in Dutch or any language):**
+```bash
+graph-agent "Geef me een grafiek met het aantal checkins per dag bij het OV:
+ Maandag = 4.1
+ Dinsdag = 4.2
+ Woensdag = 4.4
+ Donderdag = 4.7
+ Vrijdag = 4.2
+ Zaterdag = 2.3
+ Zondag = 1.7
+ De getallen zijn in miljoenen check-ins."
+# Output: Chart saved: /home/user/chart-20251106143005.png
+```
+
+**With explicit parameters:**
+```bash
+# FD-branded bar chart in PNG
+graph-agent "Q1=120, Q2=150, Q3=140, Q4=180" --style fd --format png --type bar
+
+# BNR-branded line chart in SVG
+graph-agent "Jan: 100, Feb: 120, Mar: 110" --style bnr --format svg --type line
+```
+
+**Available options:**
+- `--style` (default: fd): Brand style - `fd` or `bnr`
+- `--format` (default: png): Output format - `png` or `svg`
+- `--type` (default: bar): Chart type - `bar` or `line`
+
+**Off-topic requests are rejected:**
+```bash
 graph-agent "make me a sandwich"
 # Output: I can only help you create charts. Please ask me to make a bar or line chart.
 ```
 
 ## Architecture
 
-The CLI consists of three main components:
+The CLI consists of five main components:
 
-1. **GraphState** (`state.py`): Type-safe state object for the LangGraph workflow
-2. **Agent** (`agent.py`): LangGraph state machine with intent detection and response generation
-3. **CLI** (`cli.py`): Click-based command-line interface supporting both direct and conversational modes
+1. **GraphState** (`state.py`): Type-safe state object for the LangGraph workflow with chart generation fields
+2. **Agent** (`agent.py`): LangGraph state machine with:
+   - Intent detection (chart-related vs off-topic)
+   - Data extraction from natural language using Gemini LLM
+   - Conditional routing to chart generation or rejection
+3. **Tools** (`tools.py`): Chart generation using matplotlib with brand-specific styling (FD/BNR)
+4. **CLI** (`cli.py`): Click-based command-line interface supporting both direct and conversational modes
+5. **Tests** (`tests/`): Comprehensive test suite with 42 passing tests
+
+### LangGraph Flow
+
+```
+User Input → parse_intent → [make_chart?]
+                               ├─ Yes → extract_data → generate_chart → Chart File
+                               └─ No  → reject_task → Rejection Message
+```
 
 ## Testing
 

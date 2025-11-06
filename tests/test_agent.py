@@ -154,3 +154,181 @@ def test_get_llm_with_api_key():
             llm = agent.get_llm()
             assert llm is not None
             mock_chat.assert_called_once()
+
+
+def test_extract_data_node():
+    """Test extract_data node extracts JSON data from text."""
+    state = GraphState(
+        messages=[{"role": "user", "content": "A=10, B=20, C=30"}],
+        interaction_mode="direct",
+        intent="make_chart",
+        input_data=None,
+        chart_request={"type": "bar", "style": "fd", "format": "png"},
+        final_filepath=None,
+    )
+
+    # Mock the LLM to return valid JSON
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = (
+            '[{"label": "A", "value": 10}, {"label": "B", "value": 20}]'
+        )
+        mock_llm.invoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm
+
+        result = agent.extract_data(state)
+
+    assert result["input_data"] is not None
+    assert "A" in result["input_data"]
+    assert "10" in result["input_data"]
+
+
+def test_extract_data_handles_invalid_json():
+    """Test extract_data handles invalid JSON response."""
+    state = GraphState(
+        messages=[{"role": "user", "content": "some text"}],
+        interaction_mode="direct",
+        intent="make_chart",
+        input_data=None,
+        chart_request={"type": "bar", "style": "fd", "format": "png"},
+        final_filepath=None,
+    )
+
+    # Mock the LLM to return invalid JSON
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = "This is not JSON"
+        mock_llm.invoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm
+
+        result = agent.extract_data(state)
+
+    # Should provide a default fallback
+    assert result["input_data"] is not None
+    assert "unknown" in result["input_data"]
+
+
+def test_generate_chart_tool_node():
+    """Test generate_chart_tool creates chart file."""
+    import json
+
+    state = GraphState(
+        messages=[{"role": "user", "content": "create chart"}],
+        interaction_mode="direct",
+        intent="make_chart",
+        input_data=json.dumps(
+            [{"label": "A", "value": 10}, {"label": "B", "value": 20}]
+        ),
+        chart_request={"type": "bar", "style": "fd", "format": "png"},
+        final_filepath=None,
+    )
+
+    # Mock the matplotlib_chart_generator
+    with patch("graph_agent.tools.matplotlib_chart_generator") as mock_gen:
+        mock_gen.return_value = "/tmp/chart-123.png"
+
+        result = agent.generate_chart_tool(state)
+
+    assert result["final_filepath"] == "/tmp/chart-123.png"
+    assert len(result["messages"]) == 2
+    assert "Chart saved:" in result["messages"][1]["content"]
+    mock_gen.assert_called_once()
+
+
+def test_route_after_intent_off_topic():
+    """Test route_after_intent routes off-topic to reject_task."""
+    state = GraphState(
+        messages=[{"role": "user", "content": "test"}],
+        interaction_mode="direct",
+        intent="off_topic",
+        input_data=None,
+        chart_request=None,
+        final_filepath=None,
+    )
+
+    result = agent.route_after_intent(state)
+    assert result == "reject_task"
+
+
+def test_route_after_intent_make_chart_with_request():
+    """Test route_after_intent routes chart request with parameters to extract_data."""
+    state = GraphState(
+        messages=[{"role": "user", "content": "test"}],
+        interaction_mode="direct",
+        intent="make_chart",
+        input_data=None,
+        chart_request={"type": "bar", "style": "fd", "format": "png"},
+        final_filepath=None,
+    )
+
+    result = agent.route_after_intent(state)
+    assert result == "extract_data"
+
+
+def test_route_after_intent_make_chart_without_request():
+    """Test route_after_intent routes chart request without parameters to reject_task."""
+    state = GraphState(
+        messages=[{"role": "user", "content": "test"}],
+        interaction_mode="direct",
+        intent="make_chart",
+        input_data=None,
+        chart_request=None,
+        final_filepath=None,
+    )
+
+    result = agent.route_after_intent(state)
+    assert result == "reject_task"
+
+
+def test_full_chart_generation_flow():
+    """Test full chart generation flow from start to finish."""
+    import json
+    import os
+
+    # Mock LLM responses
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        # First call for parse_intent
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Second call for extract_data
+        extract_response = Mock()
+        extract_response.content = json.dumps(
+            [{"label": "A", "value": 10}, {"label": "B", "value": 20}]
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        graph = agent.create_graph()
+        initial_state = GraphState(
+            messages=[{"role": "user", "content": "A=10, B=20"}],
+            interaction_mode="direct",
+            intent="unknown",
+            input_data=None,
+            chart_request={"type": "bar", "style": "fd", "format": "png"},
+            final_filepath=None,
+        )
+
+        result = graph.invoke(initial_state)
+
+        # Verify intent was detected
+        assert result["intent"] == "make_chart"
+
+        # Verify data was extracted
+        assert result["input_data"] is not None
+
+        # Verify chart file was generated
+        assert result["final_filepath"] is not None
+        assert os.path.exists(result["final_filepath"])
+
+        # Verify success message
+        assert "Chart saved:" in result["messages"][-1]["content"]
+
+        # Cleanup
+        if os.path.exists(result["final_filepath"]):
+            os.remove(result["final_filepath"])
