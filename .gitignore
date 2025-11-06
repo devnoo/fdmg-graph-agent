@@ -13,9 +13,12 @@ wheels/
 .env
 .env.local
 
-# Generated charts
-chart-*.png
-chart-*.svg
+# Generated charts (root directory)
+/chart-*.png
+/chart-*.svg
+
+# Test-generated outputs
+tests/output/
 
 # Visual regression test diff images
 tests/snapshots/*-diff.png

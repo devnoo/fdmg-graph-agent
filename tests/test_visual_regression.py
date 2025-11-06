@@ -12,8 +12,12 @@ To save diff images on failure:
 """
 
 import json
+from pathlib import Path
 from PIL import Image
 from graph_agent.tools import matplotlib_chart_generator
+
+# Get absolute path to snapshots directory
+SNAPSHOTS_DIR = Path(__file__).parent / "snapshots"
 
 
 # ============================================================================
@@ -31,7 +35,7 @@ def test_fd_bar_chart_standard(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "bar", "fd", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/fd_bar_standard.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "fd_bar_standard.png"), threshold=0.1)
 
 
 def test_fd_line_chart_standard(image_snapshot):
@@ -45,7 +49,7 @@ def test_fd_line_chart_standard(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "line", "fd", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/fd_line_standard.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "fd_line_standard.png"), threshold=0.1)
 
 
 def test_bnr_bar_chart_standard(image_snapshot):
@@ -59,7 +63,7 @@ def test_bnr_bar_chart_standard(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "bar", "bnr", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/bnr_bar_standard.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "bnr_bar_standard.png"), threshold=0.1)
 
 
 def test_bnr_line_chart_standard(image_snapshot):
@@ -73,7 +77,7 @@ def test_bnr_line_chart_standard(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "line", "bnr", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/bnr_line_standard.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "bnr_line_standard.png"), threshold=0.1)
 
 
 # ============================================================================
@@ -88,7 +92,7 @@ def test_single_data_point(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "bar", "fd", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/single_point.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "single_point.png"), threshold=0.1)
 
 
 def test_large_dataset(image_snapshot):
@@ -110,7 +114,7 @@ def test_large_dataset(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "line", "fd", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/large_dataset.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "large_dataset.png"), threshold=0.1)
 
 
 def test_decimal_values(image_snapshot):
@@ -125,7 +129,7 @@ def test_decimal_values(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "bar", "bnr", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/decimal_values.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "decimal_values.png"), threshold=0.1)
 
 
 def test_very_small_values(image_snapshot):
@@ -139,7 +143,7 @@ def test_very_small_values(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "line", "fd", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/small_values.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "small_values.png"), threshold=0.1)
 
 
 def test_very_large_values(image_snapshot):
@@ -153,7 +157,7 @@ def test_very_large_values(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "bar", "bnr", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/large_values.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "large_values.png"), threshold=0.1)
 
 
 def test_mixed_value_ranges(image_snapshot):
@@ -167,7 +171,7 @@ def test_mixed_value_ranges(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "line", "fd", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/mixed_ranges.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "mixed_ranges.png"), threshold=0.1)
 
 
 def test_zero_value(image_snapshot):
@@ -181,4 +185,4 @@ def test_zero_value(image_snapshot):
 
     filepath = matplotlib_chart_generator(data, "bar", "fd", "png")
     image = Image.open(filepath)
-    image_snapshot(image, "tests/snapshots/zero_value.png", threshold=0.1)
+    image_snapshot(image, str(SNAPSHOTS_DIR / "zero_value.png"), threshold=0.1)
