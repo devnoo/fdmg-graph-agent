@@ -4,7 +4,7 @@ title: 'Story 6: Persistent Memory/Config'
 status: In Progress
 assignee: []
 created_date: '2025-11-06 13:27'
-updated_date: '2025-11-06 20:01'
+updated_date: '2025-11-06 21:27'
 labels:
   - phase-3
   - config
@@ -383,3 +383,25 @@ class GraphState(TypedDict):
    - No style specified → should use FD default
 4. Restart and verify settings persisted
 <!-- SECTION:PLAN:END -->
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+## Progress Checkpoint (2025-11-06)
+
+**Completed:**
+- ✅ Created config.py module with load/save/update_last_used functions
+- ✅ Updated GraphState to include config_change field and set_config intent
+- ✅ Committed as WIP (commit 379a450)
+
+**Next Session TODO:**
+1. Update parse_intent() to detect config change requests
+2. Create handle_config() node in agent.py
+3. Add priority resolution logic in extract_data/call_data_tool
+4. Update generate_chart_tool() to call update_last_used()
+5. Update routing for set_config -> handle_config
+6. Update CLI to initialize config_change=None
+7. Add unit tests for config.py
+8. Add integration tests
+9. Run all tests and commit completed story
+<!-- SECTION:NOTES:END -->

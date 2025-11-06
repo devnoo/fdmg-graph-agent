@@ -520,10 +520,18 @@ def test_conversational_mode_full_flow():
             os.remove(result["final_filepath"])
 
 
-def test_dutch_query_with_bnr_style():
+def test_dutch_query_with_bnr_style(tmp_path, monkeypatch):
     """Test Dutch language query with BNR style and decimal commas."""
     import json
     import os
+
+    # Use temp config directory to isolate test
+    config_dir = tmp_path / ".config" / "graph-agent"
+    config_file = config_dir / "settings.json"
+
+    import graph_agent.config as config_module
+    monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+    monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
 
     # Mock LLM responses
     with patch("graph_agent.agent.get_llm") as mock_get_llm:
@@ -565,6 +573,8 @@ def test_dutch_query_with_bnr_style():
             ],
             interaction_mode="conversational",
             intent="unknown",
+            has_file=False,
+            config_change=None,
             input_data=None,
             chart_request={"type": None, "style": None, "format": None},
             final_filepath=None,
