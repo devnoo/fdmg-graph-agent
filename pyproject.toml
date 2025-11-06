@@ -1,7 +1,21 @@
 [project]
-name = "fdmg-graph-agent"
+name = "graph-agent"
 version = "0.1.0"
-description = "Add your description here"
+description = "AI-powered CLI tool for creating brand-compliant charts from data"
 readme = "README.md"
-requires-python = ">=3.12"
-dependencies = []
+requires-python = ">=3.10"
+dependencies = [
+    "langgraph>=0.2.0",
+    "langchain-google-genai>=2.0.0",
+    "click>=8.1.0",
+    "matplotlib>=3.8.0",
+    "pandas>=2.1.0",
+    "openpyxl>=3.1.0",
+]
+
+[project.scripts]
+graph-agent = "graph_agent.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["graph_agent*"]
+exclude = ["backlog*", "tests*"]
