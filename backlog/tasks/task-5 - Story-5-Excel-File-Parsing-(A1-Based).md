@@ -1,10 +1,10 @@
 ---
 id: task-5
 title: 'Story 5: Excel File Parsing (A1-Based)'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-11-06 13:26'
-updated_date: '2025-11-06 19:06'
+updated_date: '2025-11-06 20:00'
 labels:
   - phase-3
   - excel

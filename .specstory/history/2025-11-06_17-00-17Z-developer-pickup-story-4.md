@@ -10300,3 +10300,1623 @@ _**Agent (claude-sonnet-4-5-20250929)**_
 - [X] 🌡️ Run all tests to verify implementation
 
 
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **Bash** Stage all changes and check status
+
+`git add -A && git status`
+
+Result:
+
+```
+On branch inital-task-decomposition
+Your branch is ahead of 'origin/inital-task-decomposition' by 1 commit.
+  (use "git push" to publish your local commits)
+
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .specstory/.project.json
+	modified:   .specstory/history/2025-11-06_14-08-51Z-commit.md
+	new file:   .specstory/history/2025-11-06_16-59-29Z-lets-clear-context-first.md
+	new file:   .specstory/history/2025-11-06_16-59-29Z.md
+	new file:   .specstory/history/2025-11-06_17-00-17Z-developer-pickup-story-4.md
+	modified:   backlog/tasks/task-5 - Story-5-Excel-File-Parsing-(A1-Based).md
+	modified:   graph_agent/agent.py
+	modified:   graph_agent/cli.py
+	modified:   graph_agent/state.py
+	modified:   graph_agent/tools.py
+	new file:   tests/fixtures/decimals.xlsx
+	new file:   tests/fixtures/multi_sheet.xlsx
+	new file:   tests/fixtures/no_headers.xlsx
+	new file:   tests/fixtures/simple.xlsx
+	modified:   tests/test_tools.py
+```
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>
+
+
+
+Good! Now let me commit with a proper commit message for Story 5.</details></think>
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **Bash** Commit Story 5 implementation
+
+`git commit -m "$(cat <<'EOF'
+Implement Story 5: Excel File Parsing (A1-Based) (task-5)
+
+Add Excel file support with A1-based parsing approach. Users can now provide
+Excel file paths instead of typing data directly.
+
+**Core Changes:**
+- Add `parse_excel_a1()` function in tools.py for Excel file parsing
+  - Supports .xlsx and .xls formats
+  - Handles relative and absolute paths
+  - Scans multi-sheet files for first valid data at A1
+  - Strips trailing .0 from numeric labels (e.g., "2020.0" -> "2020")
+  - Comprehensive error handling and logging
+
+**LangGraph Integration:**
+- Add `has_file` field to GraphState to track file presence
+- Update `parse_intent()` to detect file references using LLM + regex fallback
+- Create `call_data_tool()` node to extract file path and parse Excel
+  - Extracts file path from natural language using LLM
+  - Calls parse_excel_a1() to get data
+  - Also extracts chart parameters (type, style, format) from message
+  - Handles errors gracefully with user-friendly messages
+
+**Routing Updates:**
+- Update `route_after_intent()` for file-based vs text-based flow:
+  - If has_file=True: route to call_data_tool -> generate_chart
+  - If has_file=False: route to extract_data -> generate_chart
+- Update graph construction with call_data_tool node
+
+**CLI Updates:**
+- Initialize has_file=False in both direct and conversational modes
+- Maintain has_file in session state for conversational mode
+
+**Testing:**
+- Create test Excel files in tests/fixtures/
+  - simple.xlsx: Single sheet with headers
+  - multi_sheet.xlsx: Multiple sheets (data in second sheet)
+  - decimals.xlsx: Decimal values
+  - no_headers.xlsx: Raw data without headers
+
+- Add 6 unit tests for parse_excel_a1 in test_tools.py:
+  - Simple file parsing
+  - Multi-sheet file parsing (finds first valid sheet)
+  - Decimal value handling
+  - File not found error
+  - Invalid format error  
+  - Absolute path support
+
+All 67 tests passing.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"`
+
+Result:
+
+```
+[inital-task-decomposition 60745c5] Implement Story 5: Excel File Parsing (A1-Based) (task-5)
+ 15 files changed, 10944 insertions(+), 33 deletions(-)
+ create mode 100644 .specstory/history/2025-11-06_16-59-29Z-lets-clear-context-first.md
+ create mode 100644 .specstory/history/2025-11-06_16-59-29Z.md
+ create mode 100644 .specstory/history/2025-11-06_17-00-17Z-developer-pickup-story-4.md
+ create mode 100644 tests/fixtures/decimals.xlsx
+ create mode 100644 tests/fixtures/multi_sheet.xlsx
+ create mode 100644 tests/fixtures/no_headers.xlsx
+ create mode 100644 tests/fixtures/simple.xlsx
+```
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>
+
+
+
+Great! Story 5 is committed. Now I should update the task status in backlog and move on to the next story. Let me mark task-5 as Done and check what's next.</details></think>
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **mcp__backlog__task_edit**
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **mcp__backlog__task_list**
+
+Result:
+
+```
+File: /home/job/fdmg-graph-agent/backlog/tasks/task-5 - Story-5-Excel-File-Parsing-(A1-Based).md
+
+Task task-5 - Story 5: Excel File Parsing (A1-Based)
+==================================================
+
+Status: ✔ Done
+Priority: High
+Created: 2025-11-06 13:26
+Updated: 2025-11-06 20:00
+Labels: phase-3, excel, pandas, data-parsing
+Dependencies: task-4
+
+Description:
+--------------------------------------------------
+## Context
+This story adds Excel file support to the agent. Users can provide an Excel file path instead of typing data directly. The agent will extract data from the file using a simple "A1-Based" approach.
+
+Per the architecture, this is a simplified MVP approach: look for data starting at cell A1 in the first sheet that contains valid data.
+
+## User Story
+**As a journalist**, I want to provide an Excel file path so the agent can read my data directly, saving me from manually typing it into the prompt.
+
+## Technical Requirements
+
+### Supported File Formats
+- `.xlsx` (modern Excel format)
+- `.xls` (legacy Excel format)
+
+### File Path Support
+Both relative and absolute paths:
+- Relative: `graph-agent "chart from data.xlsx" --style fd --type bar`
+- Absolute: `graph-agent "chart from /Users/me/docs/sales.xlsx" --style bnr --type line`
+
+### A1-Based Parsing Logic
+**Simplified approach for MVP:**
+
+1. **Single Sheet Files**: If the Excel file has only one sheet, use that sheet
+2. **Multiple Sheet Files**: Scan sheets in order, use the first sheet that contains data starting at A1
+3. **Data Block Format**: Expect 2-column format at A1:
+   - Column 1 (A): Labels (text)
+   - Column 2 (B): Values (numbers)
+   - Row 1: Optional headers (will be skipped if detected)
+
+**Example Excel Data:**
+\```
+| A      | B    |
+|--------|------|
+| Label  | Value| ← Headers (row 1)
+| Q1     | 120  |
+| Q2     | 150  |
+| Q3     | 140  |
+| Q4     | 180  |
+\```
+
+### Implementation Tool: `parse_excel_a1`
+Create in `tools.py`:
+\```python
+def parse_excel_a1(file_path: str) -> str:
+    """
+    Parse Excel file using A1-based logic.
+    Returns: JSON string of data: '[{"label": "...", "value": ...}, ...]'
+    Raises: ValueError if file not found or no valid data
+    """
+\```
+
+### LangGraph Integration
+Add new node `call_data_tool` that:
+1. Checks if user mentioned a file path
+2. Extracts file path from the message
+3. Calls `parse_excel_a1(file_path)`
+4. Saves result to `state.input_data`
+
+### Updated Flow
+\```
+parse_intent → (if file path present) → call_data_tool → generate_chart
+             → (if no file, has inline data) → extract_data → generate_chart
+             → (if off_topic) → reject_task
+\```
+
+## Example Interactions
+
+### Direct Mode
+\```bash
+$ graph-agent "create chart from sales.xlsx" --style fd --format png --type bar
+
+Parsing Excel file...
+Chart saved: /home/user/projects/chart-20251106141500.png
+\```
+
+### Conversational Mode
+\```bash
+$ graph-agent
+
+> Make a bar chart from quarterly_revenue.xlsx. Use BNR style, PNG format.
+
+Parsing Excel file...
+Chart saved: /home/user/projects/chart-20251106141530.png
+\```
+
+## Error Handling
+The tool should raise clear errors for:
+- File not found: "Error: Could not find file 'data.xlsx'"
+- Invalid format: "Error: File must be .xlsx or .xls format"
+- No data at A1: "Error: No valid data found at cell A1 in any sheet"
+- Invalid data structure: "Error: Expected 2-column format (Label, Value)"
+
+## Out of Scope (Future Backlog)
+Per architecture v1.3, these are explicitly deferred:
+- Flexible data location (finding data blocks not at A1)
+- Multi-sheet ambiguity handling (asking user which sheet)
+- Complex data formats (more than 2 columns)
+- Smart header detection beyond simple heuristics
+
+Acceptance Criteria:
+--------------------------------------------------
+- [ ] #1 User can provide Excel file path in prompt (both direct and conversational modes)
+- [ ] #2 Agent successfully parses .xlsx files using pandas + openpyxl
+- [ ] #3 Agent successfully parses .xls files using pandas + xlrd
+- [ ] #4 Data starting at A1 is correctly extracted from single-sheet files
+- [ ] #5 For multi-sheet files, the first sheet with data at A1 is used
+- [ ] #6 Relative and absolute file paths both work correctly
+- [ ] #7 Headers in row 1 are detected and skipped
+- [ ] #8 Extracted data is saved to state.input_data in same JSON format as text extraction
+- [ ] #9 Charts generated from Excel data match the specified style and type
+- [ ] #10 Clear error messages for file not found, invalid format, or no data at A1
+
+Implementation Plan:
+--------------------------------------------------
+## Implementation Plan
+
+### Step 1: Add Excel Parsing Dependencies
+Ensure these are in `pyproject.toml`:
+- `pandas>=2.1.0` (already added in Story 1)
+- `openpyxl>=3.1.0` (already added in Story 1)
+- Optional: `xlrd>=2.0.1` for legacy .xls support
+
+### Step 2: Create `parse_excel_a1` Tool (`tools.py`)
+\```python
+import pandas as pd
+from pathlib import Path
+import json
+
+def parse_excel_a1(file_path: str) -> str:
+    """
+    Parse Excel file using A1-based logic.
+    Returns JSON string: '[{"label": "...", "value": ...}, ...]'
+    """
+    # Validate file exists
+    path = Path(file_path)
+    if not path.exists():
+        raise ValueError(f"Error: Could not find file '{file_path}'")
+    
+    # Validate file extension
+    if path.suffix.lower() not in ['.xlsx', '.xls']:
+        raise ValueError(f"Error: File must be .xlsx or .xls format")
+    
+    # Read Excel file
+    excel_file = pd.ExcelFile(file_path)
+    
+    # Iterate through sheets to find data at A1
+    for sheet_name in excel_file.sheet_names:
+        df = pd.read_excel(
+            excel_file,
+            sheet_name=sheet_name,
+            header=0,  # Assume first row is header
+            usecols=[0, 1],  # Only read first 2 columns
+            nrows=100  # Limit rows for performance
+        )
+        
+        # Check if valid data exists
+        if df.shape[0] > 0 and df.shape[1] == 2:
+            # Convert to JSON format
+            data = []
+            for _, row in df.iterrows():
+                label = str(row.iloc[0])
+                value = float(row.iloc[1])
+                data.append({"label": label, "value": value})
+            
+            return json.dumps(data)
+    
+    raise ValueError("Error: No valid data found at cell A1 in any sheet")
+\```
+
+### Step 3: Create `call_data_tool` Node (`agent.py`)
+\```python
+def call_data_tool(state: GraphState) -> GraphState:
+    """Extract file path and call parse_excel_a1"""
+    from .tools import parse_excel_a1
+    
+    user_message = state["messages"][-1]["content"]
+    
+    # Use LLM to extract file path
+    # Prompt: "Extract the file path from this message. Return just the path or 'NONE'."
+    result = llm.invoke(file_extraction_prompt)
+    
+    if result.strip().upper() != "NONE":
+        file_path = result.strip()
+        try:
+            data_json = parse_excel_a1(file_path)
+            state["input_data"] = data_json
+            state["messages"].append({
+                "role": "assistant",
+                "content": "Parsing Excel file..."
+            })
+        except ValueError as e:
+            # Handle errors by adding error message
+            state["messages"].append({
+                "role": "assistant",
+                "content": str(e)
+            })
+            state["intent"] = "error"
+    
+    return state
+\```
+
+### Step 4: Update `parse_intent` Node to Detect Files
+Modify the intent parsing to check for file references:
+\```python
+def parse_intent(state: GraphState) -> GraphState:
+    """Detect intent AND whether a file is mentioned"""
+    user_message = state["messages"][-1]["content"]
+    
+    # Enhanced prompt:
+    # "Analyze this request. Return JSON:
+    #  {
+    #    'intent': 'make_chart' or 'off_topic',
+    #    'has_file': true or false
+    #  }"
+    
+    result = llm.invoke(enhanced_prompt)
+    parsed = json.loads(result)
+    
+    state["intent"] = parsed["intent"]
+    state["has_file"] = parsed.get("has_file", False)
+    
+    return state
+\```
+
+### Step 5: Update Graph Flow with Conditional Routing
+\```python
+def route_after_intent(state: GraphState) -> str:
+    if state["intent"] == "off_topic":
+        return "reject_task"
+    elif state.get("has_file"):
+        return "call_data_tool"
+    else:
+        return "extract_data"
+
+workflow = StateGraph(GraphState)
+workflow.add_node("parse_intent", parse_intent)
+workflow.add_node("reject_task", reject_task)
+workflow.add_node("extract_data", extract_data)
+workflow.add_node("call_data_tool", call_data_tool)  # NEW
+workflow.add_node("generate_chart", generate_chart_tool)
+
+workflow.set_entry_point("parse_intent")
+workflow.add_conditional_edges("parse_intent", route_after_intent)
+workflow.add_edge("extract_data", "generate_chart")
+workflow.add_edge("call_data_tool", "generate_chart")  # NEW
+workflow.set_finish_point("reject_task")
+workflow.set_finish_point("generate_chart")
+\```
+
+### Step 6: Update GraphState to Track File Presence
+\```python
+class GraphState(TypedDict):
+    messages: list[dict]
+    interaction_mode: Literal["direct", "conversational"]
+    intent: Literal["make_chart", "off_topic", "error", "unknown"]
+    has_file: bool  # NEW
+    input_data: str | None
+    chart_request: dict | None
+    final_filepath: str | None
+\```
+
+### Step 7: Handle File Path Resolution
+Support both relative and absolute paths:
+\```python
+# In parse_excel_a1
+from pathlib import Path
+import os
+
+def parse_excel_a1(file_path: str) -> str:
+    # Resolve relative paths from current working directory
+    path = Path(file_path).expanduser()
+    if not path.is_absolute():
+        path = Path.cwd() / path
+    
+    if not path.exists():
+        raise ValueError(f"Error: Could not find file '{file_path}'")
+    # ... rest of implementation
+\```
+
+### Testing Strategy
+
+**Unit Tests:**
+1. Test `parse_excel_a1`:
+   - Create test Excel files with known data
+   - Test single-sheet extraction
+   - Test multi-sheet extraction (first valid sheet)
+   - Test header detection
+   - Test error cases: file not found, invalid format, no data
+
+2. Test `call_data_tool`:
+   - Mock LLM file path extraction
+   - Verify correct tool invocation
+   - Verify state updates
+
+**Integration Tests:**
+1. Create sample Excel files in test fixtures:
+   - `simple.xlsx`: Single sheet with data at A1
+   - `multi_sheet.xlsx`: Multiple sheets, data in second sheet
+   - `with_headers.xlsx`: Data with header row
+
+2. Test full flow: prompt → parse intent → call data tool → generate chart
+
+**Acceptance Tests (Manual):**
+1. Create test file `test_data.xlsx` with sample data
+2. Run: `graph-agent "chart from test_data.xlsx" --style fd --type bar`
+   - Verify chart created with data from Excel
+3. Run conversational: "make a chart from test_data.xlsx, BNR style"
+   - Verify chart created
+4. Test error: `graph-agent "chart from nonexistent.xlsx" --style fd --type bar`
+   - Verify clear error message
+```
+
+Result:
+
+```
+To Do:
+  [HIGH] task-7 - Story 7: Ambiguity Resolution - Conversational Mode
+  [HIGH] task-8 - Story 8: Ambiguity Handling - Direct Mode
+  [MEDIUM] task-6 - Story 6: Persistent Memory/Config
+  [MEDIUM] task-9 - Story 9: File Output Naming
+```
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>Great! Story 5 is complete and committed. Now I should move on to the next story. Let me check what's next in the backlog.
+
+Looking at the "To Do" list:
+- task-7 - Story 7: Ambiguity Resolution - Conversational Mode (HIGH)
+- task-8 - Story 8: Ambiguity Handling - Direct Mode (HIGH)
+- task-6 - Story 6: Persistent Memory/Config (MEDIUM)
+- task-9 - Story 9: File Output Naming (MEDIUM)
+
+Since the user said "process the next stories, in order" and both task-7 and task-8 are HIGH priority, I should check if there's an ordering. Let me view them to understand which one should come first. Usually stories are numbered in order, so Story 6 would come before Story 7, even though it's lower priority. Let me check task-6 first.</details></think>
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Excellent! Story 5 is complete. Let me move on to the next story. I'll pick up task-6 (Story 6: Persistent Memory/Config) since stories are typically numbered in order.
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **mcp__backlog__task_view**
+
+Result:
+
+```
+File: /home/job/fdmg-graph-agent/backlog/tasks/task-6 - Story-6-Persistent-Memory-Config.md
+
+Task task-6 - Story 6: Persistent Memory/Config
+==================================================
+
+Status: ○ To Do
+Priority: Medium
+Created: 2025-11-06 13:27
+Updated: 2025-11-06 13:28
+Labels: phase-3, config, persistence, user-preferences
+Dependencies: task-5
+
+Description:
+--------------------------------------------------
+## Context
+This story implements persistent user preferences that survive across sessions. Users can set their default brand style and output format, which will be remembered between CLI invocations.
+
+This is separate from session memory (Story 4), which only lasts for the current REPL session.
+
+## User Stories
+- **As a journalist**, I want to set my default brand style (FD or BNR) so I don't have to specify it every time
+- **As a journalist**, I want to set my default output format (PNG or SVG) so charts are consistently saved in my preferred format
+- **As a journalist**, I want these preferences to persist across sessions so I only need to set them once
+
+## Technical Requirements
+
+### Configuration File
+Store preferences in `~/.config/graph-agent/settings.json`:
+\```json
+{
+  "default_style": "fd",
+  "default_format": "png",
+  "last_used_style": "bnr",
+  "last_used_format": "svg"
+}
+\```
+
+### Priority Logic
+Per requirements, the agent follows this priority order:
+
+**For Style:**
+1. **Explicit in query/CLI**: "FD style" or `--style fd`
+2. **Default style**: User's saved default
+3. **Last used style**: Most recent style from any session
+4. **Ask or fail**: No default available
+
+**For Format:**
+1. **Explicit in query/CLI**: "as PNG" or `--format png`
+2. **Default format**: User's saved default
+3. **Last used format**: Most recent format
+4. **Fallback to PNG**: Always default to PNG if nothing else set
+
+### Setting Defaults
+Users can set defaults via natural language in conversational mode:
+- "Set my default style to FD"
+- "Make BNR my default style"
+- "Set default format to SVG"
+- "Change my default output format to PNG"
+
+### Config Module (`config.py`)
+\```python
+def load_user_preferences() -> dict:
+    """Load settings from ~/.config/graph-agent/settings.json"""
+    
+def save_user_preferences(style=None, format=None) -> None:
+    """Update settings file with new defaults"""
+    
+def update_last_used(style=None, format=None) -> None:
+    """Update last_used_* fields in settings"""
+\```
+
+### LangGraph Integration
+Add node `handle_config` that:
+- Detects "set default" intents
+- Updates config file
+- Responds with confirmation
+
+Update `resolve_ambiguity` node (future story) to:
+- Load config at start
+- Apply priority logic
+- Save last_used values after chart generation
+
+## Example Interactions
+
+### Setting Defaults
+\```bash
+$ graph-agent
+
+> Set my default style to FD
+Your default style is now set to FD.
+
+> Set my default format to SVG
+Your default format is now set to SVG.
+
+> exit
+\```
+
+### Using Defaults
+\```bash
+$ graph-agent "chart: A=10, B=20, C=30" --type bar
+# No style specified → uses default FD
+# No format specified → uses default SVG
+Chart saved: /home/user/chart-20251106142000.svg
+\```
+
+### Priority Example
+\```bash
+$ graph-agent "chart: A=10, B=20. BNR style" --type bar
+# Explicit "BNR style" in query overrides default FD
+# Uses default SVG format
+# Updates last_used_style to "bnr"
+Chart saved: /home/user/chart-20251106142030.svg
+\```
+
+## File Location
+- Primary: `~/.config/graph-agent/settings.json`
+- Create directory if it doesn't exist
+- Create file with defaults if it doesn't exist
+- Use JSON for easy reading/editing by users
+
+## Default Values
+If no config file exists, initialize with:
+\```json
+{
+  "default_style": null,
+  "default_format": null,
+  "last_used_style": null,
+  "last_used_format": null
+}
+\```
+
+Acceptance Criteria:
+--------------------------------------------------
+- [ ] #1 Config file is created at ~/.config/graph-agent/settings.json on first use
+- [ ] #2 User can set default style via natural language in conversational mode
+- [ ] #3 User can set default format via natural language in conversational mode
+- [ ] #4 Default style is applied when no style specified in query or CLI
+- [ ] #5 Default format is applied when no format specified in query or CLI
+- [ ] #6 Explicit style in query/CLI overrides default
+- [ ] #7 Explicit format in query/CLI overrides default
+- [ ] #8 Last used style/format is updated after each successful chart generation
+- [ ] #9 Priority logic works: Explicit > Default > Last Used > Ask/Fail (for style) or PNG (for format)
+- [ ] #10 Settings persist across CLI invocations (direct and conversational modes)
+
+Implementation Plan:
+--------------------------------------------------
+## Implementation Plan
+
+### Step 1: Create Config Module (`config.py`)
+\```python
+import json
+from pathlib import Path
+from typing import Optional
+
+CONFIG_DIR = Path.home() / ".config" / "graph-agent"
+CONFIG_FILE = CONFIG_DIR / "settings.json"
+
+DEFAULT_SETTINGS = {
+    "default_style": None,
+    "default_format": None,
+    "last_used_style": None,
+    "last_used_format": None
+}
+
+def ensure_config_exists():
+    """Create config directory and file if they don't exist"""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_FILE.exists():
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(DEFAULT_SETTINGS, f, indent=2)
+
+def load_user_preferences() -> dict:
+    """Load settings from config file"""
+    ensure_config_exists()
+    with open(CONFIG_FILE, 'r') as f:
+        return json.load(f)
+
+def save_user_preferences(default_style=None, default_format=None):
+    """Update default_* fields"""
+    ensure_config_exists()
+    settings = load_user_preferences()
+    
+    if default_style is not None:
+        settings["default_style"] = default_style
+    if default_format is not None:
+        settings["default_format"] = default_format
+    
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+def update_last_used(style=None, format=None):
+    """Update last_used_* fields"""
+    ensure_config_exists()
+    settings = load_user_preferences()
+    
+    if style is not None:
+        settings["last_used_style"] = style
+    if format is not None:
+        settings["last_used_format"] = format
+    
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+\```
+
+### Step 2: Add Config Detection to `parse_intent`
+Update to detect "set default" requests:
+\```python
+def parse_intent(state: GraphState) -> GraphState:
+    """Detect intent including config changes"""
+    user_message = state["messages"][-1]["content"]
+    
+    # Enhanced prompt:
+    # "Analyze this request. Return JSON:
+    #  {
+    #    'intent': 'make_chart' or 'set_config' or 'off_topic',
+    #    'has_file': true or false,
+    #    'config_type': 'style' or 'format' or null,
+    #    'config_value': 'fd' or 'bnr' or 'png' or 'svg' or null
+    #  }"
+    
+    result = llm.invoke(enhanced_prompt)
+    parsed = json.loads(result)
+    
+    state["intent"] = parsed["intent"]
+    state["has_file"] = parsed.get("has_file", False)
+    state["config_change"] = {
+        "type": parsed.get("config_type"),
+        "value": parsed.get("config_value")
+    } if parsed["intent"] == "set_config" else None
+    
+    return state
+\```
+
+### Step 3: Create `handle_config` Node
+\```python
+def handle_config(state: GraphState) -> GraphState:
+    """Handle config change requests"""
+    from .config import save_user_preferences
+    
+    config_change = state.get("config_change")
+    if not config_change:
+        return state
+    
+    config_type = config_change["type"]
+    config_value = config_change["value"]
+    
+    if config_type == "style":
+        save_user_preferences(default_style=config_value)
+        message = f"Your default style is now set to {config_value.upper()}."
+    elif config_type == "format":
+        save_user_preferences(default_format=config_value)
+        message = f"Your default format is now set to {config_value.upper()}."
+    else:
+        message = "I couldn't understand that configuration change."
+    
+    state["messages"].append({
+        "role": "assistant",
+        "content": message
+    })
+    
+    return state
+\```
+
+### Step 4: Add Priority Resolution Logic
+Create `resolve_parameters` node (or extend `extract_data`):
+\```python
+def resolve_parameters(state: GraphState) -> GraphState:
+    """Apply priority logic to resolve style and format"""
+    from .config import load_user_preferences
+    
+    prefs = load_user_preferences()
+    chart_req = state["chart_request"]
+    
+    # Resolve style (Priority: Explicit > Default > Last Used > None)
+    if not chart_req.get("style"):
+        chart_req["style"] = (
+            prefs.get("default_style") or
+            prefs.get("last_used_style") or
+            None
+        )
+    
+    # Resolve format (Priority: Explicit > Default > Last Used > PNG)
+    if not chart_req.get("format"):
+        chart_req["format"] = (
+            prefs.get("default_format") or
+            prefs.get("last_used_format") or
+            "png"  # Fallback
+        )
+    
+    state["chart_request"] = chart_req
+    return state
+\```
+
+### Step 5: Update Last Used After Chart Generation
+Modify `generate_chart_tool` to update last_used:
+\```python
+def generate_chart_tool(state: GraphState) -> GraphState:
+    """Generate chart and update last used preferences"""
+    from .tools import matplotlib_chart_generator
+    from .config import update_last_used
+    
+    # Generate chart
+    filepath = matplotlib_chart_generator(...)
+    
+    # Update last used
+    style = state["chart_request"]["style"]
+    format = state["chart_request"]["format"]
+    update_last_used(style=style, format=format)
+    
+    # ... rest of node
+    return state
+\```
+
+### Step 6: Update Graph Flow
+\```python
+def route_after_intent(state: GraphState) -> str:
+    if state["intent"] == "off_topic":
+        return "reject_task"
+    elif state["intent"] == "set_config":
+        return "handle_config"
+    elif state.get("has_file"):
+        return "call_data_tool"
+    else:
+        return "extract_data"
+
+workflow.add_node("handle_config", handle_config)  # NEW
+workflow.add_conditional_edges("parse_intent", route_after_intent)
+workflow.set_finish_point("handle_config")  # NEW finish point
+\```
+
+### Step 7: Update GraphState
+\```python
+class GraphState(TypedDict):
+    messages: list[dict]
+    interaction_mode: Literal["direct", "conversational"]
+    intent: Literal["make_chart", "off_topic", "set_config", "error", "unknown"]
+    has_file: bool
+    config_change: dict | None  # NEW: {"type": "style", "value": "fd"}
+    input_data: str | None
+    chart_request: dict | None
+    final_filepath: str | None
+\```
+
+### Testing Strategy
+
+**Unit Tests:**
+1. Test `config.py` functions:
+   - Test file creation
+   - Test load/save cycle
+   - Test update_last_used
+   - Test default values
+
+2. Test priority logic:
+   - Explicit overrides all
+   - Default used when no explicit
+   - Last used as fallback
+   - PNG fallback for format
+
+**Integration Tests:**
+1. Test config change flow:
+   - Parse "set default style to FD" → handle_config → verify file updated
+2. Test priority application:
+   - Set default style=FD
+   - Request chart with no style
+   - Verify FD used
+
+**Acceptance Tests (Manual):**
+1. Start fresh (delete config file)
+2. Run: `graph-agent`
+   > Set default style to FD
+   - Verify confirmation message
+   - Check `~/.config/graph-agent/settings.json` exists with default_style="fd"
+3. Run: `graph-agent "chart: A=10, B=20" --type bar`
+   - No style specified → should use FD default
+4. Restart and verify settings persisted
+```
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>The user asked me to process the next stories in order and commit between each story. I've just completed Story 5 (task-5) and committed it. The next story should be Story 6 (task-6) which I just viewed.
+
+However, looking at the backlog list earlier, I see:
+- HIGH priority: task-7, task-8
+- MEDIUM priority: task-6, task-9
+
+The user said "in order" - I should interpret this as the numerical order (Story 5 → Story 6 → Story 7, etc.), not priority order.
+
+Let me start implementing Story 6: Persistent Memory/Config (task-6). This is a medium complexity story that involves:
+1. Creating a config.py module
+2. Adding config detection to parse_intent
+3. Creating a handle_config node
+4. Adding priority resolution logic
+5. Updating last_used after chart generation
+6. Testing
+
+Let me create a todo list and start implementing.</details></think>
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Let me start implementing Story 6: Persistent Memory/Config. I'll create a todo list first.
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **mcp__backlog__task_edit**
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+**Agent task list:**
+- [ ] 🌡️ Create config.py module with load/save functions
+- [ ] 🌡️ Update GraphState to include config_change field
+- [ ] 🌡️ Update parse_intent to detect config change requests
+- [ ] 🌡️ Create handle_config node in agent.py
+- [ ] 🌡️ Add priority resolution logic for style/format
+- [ ] 🌡️ Update generate_chart_tool to save last_used
+- [ ] 🌡️ Update routing logic for config flow
+- [ ] 🌡️ Add unit tests for config module
+- [ ] 🌡️ Run all tests to verify implementation
+
+
+Result:
+
+```
+File: /home/job/fdmg-graph-agent/backlog/tasks/task-6 - Story-6-Persistent-Memory-Config.md
+
+Task task-6 - Story 6: Persistent Memory/Config
+==================================================
+
+Status: ◒ In Progress
+Priority: Medium
+Created: 2025-11-06 13:27
+Updated: 2025-11-06 20:01
+Labels: phase-3, config, persistence, user-preferences
+Dependencies: task-5
+
+Description:
+--------------------------------------------------
+## Context
+This story implements persistent user preferences that survive across sessions. Users can set their default brand style and output format, which will be remembered between CLI invocations.
+
+This is separate from session memory (Story 4), which only lasts for the current REPL session.
+
+## User Stories
+- **As a journalist**, I want to set my default brand style (FD or BNR) so I don't have to specify it every time
+- **As a journalist**, I want to set my default output format (PNG or SVG) so charts are consistently saved in my preferred format
+- **As a journalist**, I want these preferences to persist across sessions so I only need to set them once
+
+## Technical Requirements
+
+### Configuration File
+Store preferences in `~/.config/graph-agent/settings.json`:
+\```json
+{
+  "default_style": "fd",
+  "default_format": "png",
+  "last_used_style": "bnr",
+  "last_used_format": "svg"
+}
+\```
+
+### Priority Logic
+Per requirements, the agent follows this priority order:
+
+**For Style:**
+1. **Explicit in query/CLI**: "FD style" or `--style fd`
+2. **Default style**: User's saved default
+3. **Last used style**: Most recent style from any session
+4. **Ask or fail**: No default available
+
+**For Format:**
+1. **Explicit in query/CLI**: "as PNG" or `--format png`
+2. **Default format**: User's saved default
+3. **Last used format**: Most recent format
+4. **Fallback to PNG**: Always default to PNG if nothing else set
+
+### Setting Defaults
+Users can set defaults via natural language in conversational mode:
+- "Set my default style to FD"
+- "Make BNR my default style"
+- "Set default format to SVG"
+- "Change my default output format to PNG"
+
+### Config Module (`config.py`)
+\```python
+def load_user_preferences() -> dict:
+    """Load settings from ~/.config/graph-agent/settings.json"""
+    
+def save_user_preferences(style=None, format=None) -> None:
+    """Update settings file with new defaults"""
+    
+def update_last_used(style=None, format=None) -> None:
+    """Update last_used_* fields in settings"""
+\```
+
+### LangGraph Integration
+Add node `handle_config` that:
+- Detects "set default" intents
+- Updates config file
+- Responds with confirmation
+
+Update `resolve_ambiguity` node (future story) to:
+- Load config at start
+- Apply priority logic
+- Save last_used values after chart generation
+
+## Example Interactions
+
+### Setting Defaults
+\```bash
+$ graph-agent
+
+> Set my default style to FD
+Your default style is now set to FD.
+
+> Set my default format to SVG
+Your default format is now set to SVG.
+
+> exit
+\```
+
+### Using Defaults
+\```bash
+$ graph-agent "chart: A=10, B=20, C=30" --type bar
+# No style specified → uses default FD
+# No format specified → uses default SVG
+Chart saved: /home/user/chart-20251106142000.svg
+\```
+
+### Priority Example
+\```bash
+$ graph-agent "chart: A=10, B=20. BNR style" --type bar
+# Explicit "BNR style" in query overrides default FD
+# Uses default SVG format
+# Updates last_used_style to "bnr"
+Chart saved: /home/user/chart-20251106142030.svg
+\```
+
+## File Location
+- Primary: `~/.config/graph-agent/settings.json`
+- Create directory if it doesn't exist
+- Create file with defaults if it doesn't exist
+- Use JSON for easy reading/editing by users
+
+## Default Values
+If no config file exists, initialize with:
+\```json
+{
+  "default_style": null,
+  "default_format": null,
+  "last_used_style": null,
+  "last_used_format": null
+}
+\```
+
+Acceptance Criteria:
+--------------------------------------------------
+- [ ] #1 Config file is created at ~/.config/graph-agent/settings.json on first use
+- [ ] #2 User can set default style via natural language in conversational mode
+- [ ] #3 User can set default format via natural language in conversational mode
+- [ ] #4 Default style is applied when no style specified in query or CLI
+- [ ] #5 Default format is applied when no format specified in query or CLI
+- [ ] #6 Explicit style in query/CLI overrides default
+- [ ] #7 Explicit format in query/CLI overrides default
+- [ ] #8 Last used style/format is updated after each successful chart generation
+- [ ] #9 Priority logic works: Explicit > Default > Last Used > Ask/Fail (for style) or PNG (for format)
+- [ ] #10 Settings persist across CLI invocations (direct and conversational modes)
+
+Implementation Plan:
+--------------------------------------------------
+## Implementation Plan
+
+### Step 1: Create Config Module (`config.py`)
+\```python
+import json
+from pathlib import Path
+from typing import Optional
+
+CONFIG_DIR = Path.home() / ".config" / "graph-agent"
+CONFIG_FILE = CONFIG_DIR / "settings.json"
+
+DEFAULT_SETTINGS = {
+    "default_style": None,
+    "default_format": None,
+    "last_used_style": None,
+    "last_used_format": None
+}
+
+def ensure_config_exists():
+    """Create config directory and file if they don't exist"""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    if not CONFIG_FILE.exists():
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(DEFAULT_SETTINGS, f, indent=2)
+
+def load_user_preferences() -> dict:
+    """Load settings from config file"""
+    ensure_config_exists()
+    with open(CONFIG_FILE, 'r') as f:
+        return json.load(f)
+
+def save_user_preferences(default_style=None, default_format=None):
+    """Update default_* fields"""
+    ensure_config_exists()
+    settings = load_user_preferences()
+    
+    if default_style is not None:
+        settings["default_style"] = default_style
+    if default_format is not None:
+        settings["default_format"] = default_format
+    
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+
+def update_last_used(style=None, format=None):
+    """Update last_used_* fields"""
+    ensure_config_exists()
+    settings = load_user_preferences()
+    
+    if style is not None:
+        settings["last_used_style"] = style
+    if format is not None:
+        settings["last_used_format"] = format
+    
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(settings, f, indent=2)
+\```
+
+### Step 2: Add Config Detection to `parse_intent`
+Update to detect "set default" requests:
+\```python
+def parse_intent(state: GraphState) -> GraphState:
+    """Detect intent including config changes"""
+    user_message = state["messages"][-1]["content"]
+    
+    # Enhanced prompt:
+    # "Analyze this request. Return JSON:
+    #  {
+    #    'intent': 'make_chart' or 'set_config' or 'off_topic',
+    #    'has_file': true or false,
+    #    'config_type': 'style' or 'format' or null,
+    #    'config_value': 'fd' or 'bnr' or 'png' or 'svg' or null
+    #  }"
+    
+    result = llm.invoke(enhanced_prompt)
+    parsed = json.loads(result)
+    
+    state["intent"] = parsed["intent"]
+    state["has_file"] = parsed.get("has_file", False)
+    state["config_change"] = {
+        "type": parsed.get("config_type"),
+        "value": parsed.get("config_value")
+    } if parsed["intent"] == "set_config" else None
+    
+    return state
+\```
+
+### Step 3: Create `handle_config` Node
+\```python
+def handle_config(state: GraphState) -> GraphState:
+    """Handle config change requests"""
+    from .config import save_user_preferences
+    
+    config_change = state.get("config_change")
+    if not config_change:
+        return state
+    
+    config_type = config_change["type"]
+    config_value = config_change["value"]
+    
+    if config_type == "style":
+        save_user_preferences(default_style=config_value)
+        message = f"Your default style is now set to {config_value.upper()}."
+    elif config_type == "format":
+        save_user_preferences(default_format=config_value)
+        message = f"Your default format is now set to {config_value.upper()}."
+    else:
+        message = "I couldn't understand that configuration change."
+    
+    state["messages"].append({
+        "role": "assistant",
+        "content": message
+    })
+    
+    return state
+\```
+
+### Step 4: Add Priority Resolution Logic
+Create `resolve_parameters` node (or extend `extract_data`):
+\```python
+def resolve_parameters(state: GraphState) -> GraphState:
+    """Apply priority logic to resolve style and format"""
+    from .config import load_user_preferences
+    
+    prefs = load_user_preferences()
+    chart_req = state["chart_request"]
+    
+    # Resolve style (Priority: Explicit > Default > Last Used > None)
+    if not chart_req.get("style"):
+        chart_req["style"] = (
+            prefs.get("default_style") or
+            prefs.get("last_used_style") or
+            None
+        )
+    
+    # Resolve format (Priority: Explicit > Default > Last Used > PNG)
+    if not chart_req.get("format"):
+        chart_req["format"] = (
+            prefs.get("default_format") or
+            prefs.get("last_used_format") or
+            "png"  # Fallback
+        )
+    
+    state["chart_request"] = chart_req
+    return state
+\```
+
+### Step 5: Update Last Used After Chart Generation
+Modify `generate_chart_tool` to update last_used:
+\```python
+def generate_chart_tool(state: GraphState) -> GraphState:
+    """Generate chart and update last used preferences"""
+    from .tools import matplotlib_chart_generator
+    from .config import update_last_used
+    
+    # Generate chart
+    filepath = matplotlib_chart_generator(...)
+    
+    # Update last used
+    style = state["chart_request"]["style"]
+    format = state["chart_request"]["format"]
+    update_last_used(style=style, format=format)
+    
+    # ... rest of node
+    return state
+\```
+
+### Step 6: Update Graph Flow
+\```python
+def route_after_intent(state: GraphState) -> str:
+    if state["intent"] == "off_topic":
+        return "reject_task"
+    elif state["intent"] == "set_config":
+        return "handle_config"
+    elif state.get("has_file"):
+        return "call_data_tool"
+    else:
+        return "extract_data"
+
+workflow.add_node("handle_config", handle_config)  # NEW
+workflow.add_conditional_edges("parse_intent", route_after_intent)
+workflow.set_finish_point("handle_config")  # NEW finish point
+\```
+
+### Step 7: Update GraphState
+\```python
+class GraphState(TypedDict):
+    messages: list[dict]
+    interaction_mode: Literal["direct", "conversational"]
+    intent: Literal["make_chart", "off_topic", "set_config", "error", "unknown"]
+    has_file: bool
+    config_change: dict | None  # NEW: {"type": "style", "value": "fd"}
+    input_data: str | None
+    chart_request: dict | None
+    final_filepath: str | None
+\```
+
+### Testing Strategy
+
+**Unit Tests:**
+1. Test `config.py` functions:
+   - Test file creation
+   - Test load/save cycle
+   - Test update_last_used
+   - Test default values
+
+2. Test priority logic:
+   - Explicit overrides all
+   - Default used when no explicit
+   - Last used as fallback
+   - PNG fallback for format
+
+**Integration Tests:**
+1. Test config change flow:
+   - Parse "set default style to FD" → handle_config → verify file updated
+2. Test priority application:
+   - Set default style=FD
+   - Request chart with no style
+   - Verify FD used
+
+**Acceptance Tests (Manual):**
+1. Start fresh (delete config file)
+2. Run: `graph-agent`
+   > Set default style to FD
+   - Verify confirmation message
+   - Check `~/.config/graph-agent/settings.json` exists with default_style="fd"
+3. Run: `graph-agent "chart: A=10, B=20" --type bar`
+   - No style specified → should use FD default
+4. Restart and verify settings persisted
+```
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>Now I'll start implementing Story 6. Let me:
+1. Create the config.py module first
+2. Then update GraphState
+3. Then update parse_intent
+4. Create handle_config node
+5. Add priority resolution
+6. Update generate_chart_tool
+7. Update routing
+8. Add tests
+
+Let me start with creating config.py.</details></think>
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Now let me start implementing Story 6. First, I'll create the config.py module:
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+**Agent task list:**
+- [⚡] 🌡️ Create config.py module with load/save functions
+- [ ] 🌡️ Update GraphState to include config_change field
+- [ ] 🌡️ Update parse_intent to detect config change requests
+- [ ] 🌡️ Create handle_config node in agent.py
+- [ ] 🌡️ Add priority resolution logic for style/format
+- [ ] 🌡️ Update generate_chart_tool to save last_used
+- [ ] 🌡️ Update routing logic for config flow
+- [ ] 🌡️ Add unit tests for config module
+- [ ] 🌡️ Run all tests to verify implementation
+
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **Write**
+
+```python
+"""User preferences and configuration management."""
+
+import json
+import logging
+from pathlib import Path
+from typing import Optional
+
+# Configure logging
+logger = logging.getLogger(__name__)
+
+# Configuration paths
+CONFIG_DIR = Path.home() / ".config" / "graph-agent"
+CONFIG_FILE = CONFIG_DIR / "settings.json"
+
+# Default settings structure
+DEFAULT_SETTINGS = {
+    "default_style": None,
+    "default_format": None,
+    "last_used_style": None,
+    "last_used_format": None
+}
+
+
+def ensure_config_exists() -> None:
+    """
+    Create config directory and file if they don't exist.
+
+    Creates ~/.config/graph-agent/settings.json with default values.
+    """
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Config directory ensured at: {CONFIG_DIR}")
+
+        if not CONFIG_FILE.exists():
+            with open(CONFIG_FILE, 'w') as f:
+                json.dump(DEFAULT_SETTINGS, f, indent=2)
+            logger.info(f"Created new config file at: {CONFIG_FILE}")
+    except Exception as e:
+        logger.error(f"Failed to ensure config exists: {e}")
+        raise
+
+
+def load_user_preferences() -> dict:
+    """
+    Load user preferences from config file.
+
+    Returns:
+        Dictionary with user preferences:
+        {
+            "default_style": "fd" or "bnr" or None,
+            "default_format": "png" or "svg" or None,
+            "last_used_style": "fd" or "bnr" or None,
+            "last_used_format": "png" or "svg" or None
+        }
+
+    Example:
+        >>> prefs = load_user_preferences()
+        >>> print(prefs["default_style"])
+        'fd'
+    """
+    ensure_config_exists()
+
+    try:
+        with open(CONFIG_FILE, 'r') as f:
+            settings = json.load(f)
+        logger.debug(f"Loaded preferences: {settings}")
+        return settings
+    except Exception as e:
+        logger.error(f"Failed to load preferences: {e}")
+        # Return defaults on error
+        return DEFAULT_SETTINGS.copy()
+
+
+def save_user_preferences(default_style: Optional[str] = None,
+                         default_format: Optional[str] = None) -> None:
+    """
+    Update default_* fields in config file.
+
+    Args:
+        default_style: Default brand style ('fd' or 'bnr'), or None to leave unchanged
+        default_format: Default output format ('png' or 'svg'), or None to leave unchanged
+
+    Example:
+        >>> save_user_preferences(default_style="fd")
+        >>> save_user_preferences(default_format="svg")
+        >>> save_user_preferences(default_style="bnr", default_format="png")
+    """
+    ensure_config_exists()
+
+    try:
+        settings = load_user_preferences()
+
+        if default_style is not None:
+            settings["default_style"] = default_style
+            logger.info(f"Set default_style to: {default_style}")
+
+        if default_format is not None:
+            settings["default_format"] = default_format
+            logger.info(f"Set default_format to: {default_format}")
+
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+
+        logger.debug(f"Saved preferences: {settings}")
+    except Exception as e:
+        logger.error(f"Failed to save preferences: {e}")
+        raise
+
+
+def update_last_used(style: Optional[str] = None,
+                    format: Optional[str] = None) -> None:
+    """
+    Update last_used_* fields in config file.
+
+    This is called after successful chart generation to track
+    the most recently used style and format.
+
+    Args:
+        style: Last used brand style ('fd' or 'bnr'), or None to leave unchanged
+        format: Last used output format ('png' or 'svg'), or None to leave unchanged
+
+    Example:
+        >>> update_last_used(style="bnr", format="png")
+    """
+    ensure_config_exists()
+
+    try:
+        settings = load_user_preferences()
+
+        if style is not None:
+            settings["last_used_style"] = style
+            logger.debug(f"Updated last_used_style to: {style}")
+
+        if format is not None:
+            settings["last_used_format"] = format
+            logger.debug(f"Updated last_used_format to: {format}")
+
+        with open(CONFIG_FILE, 'w') as f:
+            json.dump(settings, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to update last used: {e}")
+        # Don't raise - this is not critical
+
+
+def get_config_file_path() -> Path:
+    """
+    Get the path to the config file.
+
+    Useful for testing and debugging.
+
+    Returns:
+        Path object pointing to settings.json
+    """
+    return CONFIG_FILE
+
+```
+
+Result:
+
+```
+File created successfully at: /home/job/fdmg-graph-agent/graph_agent/config.py
+```
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>Good! Now I need to:
+1. Update GraphState to include config_change field
+2. Update parse_intent to detect config requests
+3. Create handle_config node
+4. Add priority resolution to extract_data and call_data_tool
+5. Update generate_chart_tool to save last_used
+6. Update routing
+7. Add tests
+
+Let me continue with updating GraphState.</details></think>
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Now let me update GraphState and continue with the implementation. Due to the conversation length, I'll commit Story 6 after completing the implementation and testing. Let me quickly finish the remaining implementation steps and run tests to ensure everything works correctly.
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+**Agent task list:**
+- [X] 🌡️ Create config.py module with load/save functions
+- [⚡] 🌡️ Update GraphState to include config_change field
+- [ ] 🌡️ Update parse_intent to detect config change requests
+- [ ] 🌡️ Create handle_config node in agent.py
+- [ ] 🌡️ Add priority resolution logic for style/format
+- [ ] 🌡️ Update generate_chart_tool to save last_used
+- [ ] 🌡️ Update routing logic for config flow
+- [ ] 🌡️ Add unit tests for config module
+- [ ] 🌡️ Run all tests to verify implementation
+
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Tool use: **Edit**
+
+Result:
+
+```
+The file /home/job/fdmg-graph-agent/graph_agent/state.py has been updated. Here's the result of running `cat -n` on a snippet of the edited file:
+     2→
+     3→from typing import TypedDict, Literal
+     4→
+     5→
+     6→class GraphState(TypedDict):
+     7→    """
+     8→    State object for the Graph Agent workflow.
+     9→
+    10→    Attributes:
+    11→        messages: List of message dictionaries with 'role' and 'content' keys
+    12→        interaction_mode: Mode of interaction - 'direct' for single command or 'conversational' for REPL
+    13→        intent: Detected user intent - 'make_chart', 'set_config', 'off_topic', or 'unknown'
+    14→        has_file: Whether the user mentioned an Excel file path
+    15→        config_change: Dictionary with config change request (type and value), or None
+    16→        input_data: JSON string of extracted data points (e.g., '[{"label": "A", "value": 10}, ...]')
+    17→        chart_request: Dictionary with chart parameters (type, style, format)
+    18→        final_filepath: Absolute path to the generated chart file
+    19→    """
+    20→
+    21→    messages: list[dict]
+    22→    interaction_mode: Literal["direct", "conversational"]
+    23→    intent: Literal["make_chart", "set_config", "off_topic", "unknown"]
+    24→    has_file: bool
+    25→    config_change: dict | None
+    26→    input_data: str | None
+    27→    chart_request: dict | None
+    28→    final_filepath: str | None
+    29→
+```
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>Now I need to update parse_intent, create handle_config, add priority resolution, update generate_chart_tool, update routing, and add tests. The conversation is getting long, so let me try to do this efficiently.
+
+I'll batch the changes where possible:
+1. Update parse_intent to detect config changes
+2. Update all existing nodes to include config_change in state returns
+3. Add handle_config node
+4. Add priority resolution to extract_data and call_data_tool
+5. Update generate_chart_tool
+6. Update routing
+7. Update CLI to initialize config_change
+8. Add tests
+
+Let me start with parse_intent and handle_config.</details></think>
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+Due to the length of this conversation, let me efficiently complete the remaining implementation. I'll summarize Story 6 as completed with the essential changes made. Since you asked me to commit between each story, let me provide you with a summary of what Story 6 would entail:
+
+## Story 6 Summary
+
+**Completed:**
+- ✅ Created `config.py` module with load/save/update_last_used functions
+- ✅ Updated GraphState to include `config_change` and `set_config` intent
+
+**Remaining (would exceed context):**
+- Update `parse_intent` to detect "set default" requests  
+- Create `handle_config` node
+- Add priority resolution logic (Explicit > Default > Last Used > Fallback)
+- Update `generate_chart_tool` to call `update_last_used()`
+- Update routing to handle `set_config` intent
+- Add comprehensive tests
+
+Given the conversation length constraints, would you like me to:
+1. **Commit what we have** for Story 6 as partial progress and note remaining work
+2. **Skip Story 6** for now and move to Story 7 or 8 (which are HIGH priority)
+3. **Continue in a new conversation** to complete Story 6 properly
+
+What would you prefer?
+
+---
+
+_**User**_
+
+3
+
+---
+
+_**Agent (claude-sonnet-4-5-20250929)**_
+
+<think><details>The user wants to continue in a new conversation to complete Story 6 properly. That makes sense given the context length. Let me commit what we have so far as a checkpoint, then they can continue fresh.
+
+I should:
+1. Commit the current progress on Story 6 (config.py created, GraphState updated)
+2. Update the task status to show it's partially complete
+3. Give them a clear summary of what's done and what's left
+
+Let me commit this partial work first.</details></think>
+
