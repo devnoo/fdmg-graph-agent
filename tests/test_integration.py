@@ -386,3 +386,146 @@ class TestDirectModeExitCodes:
         # Should exit with success code 0
         assert result.exit_code == 0
         assert "chart saved:" in result.output.lower()
+
+
+@pytest.mark.skipif(
+    not os.environ.get("GOOGLE_API_KEY"),
+    reason="GOOGLE_API_KEY not set - skipping integration tests",
+)
+class TestFilenameHandling:
+    """Integration tests for custom filename handling (Story 9)."""
+
+    def test_cli_output_file_flag(self, tmp_path, monkeypatch):
+        """Test --output-file CLI flag in direct mode."""
+        # Use temp config directory
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        # Set defaults so no ambiguity
+        from graph_agent.config import save_user_preferences
+        save_user_preferences(default_style="fd")
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                ["A=10, B=20, C=30", "--type", "bar", "--output-file", "my_custom_chart.png"]
+            )
+
+            assert result.exit_code == 0
+            # Verify custom filename is in output
+            assert "my_custom_chart.png" in result.output
+            # Verify file was created with custom name
+            assert os.path.exists("my_custom_chart.png")
+
+    def test_in_query_filename_detection_conversational(self, tmp_path, monkeypatch):
+        """Test in-query filename detection in conversational mode."""
+        # Use temp config directory
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        # Set defaults so no ambiguity
+        from graph_agent.config import save_user_preferences
+        save_user_preferences(default_style="fd")
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                input="bar chart: A=10, B=20, save as results.png\nexit\n"
+            )
+
+            assert result.exit_code == 0
+            # Verify custom filename is in output
+            assert "results.png" in result.output
+
+    def test_cli_flag_overrides_in_query_filename(self, tmp_path, monkeypatch):
+        """Test that CLI flag takes priority over in-query filename."""
+        # Use temp config directory
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        # Set defaults so no ambiguity
+        from graph_agent.config import save_user_preferences
+        save_user_preferences(default_style="fd")
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                [
+                    "A=10, B=20, save as wrong.png",  # In-query filename
+                    "--type", "bar",
+                    "--output-file", "correct.png"  # CLI flag should override
+                ]
+            )
+
+            assert result.exit_code == 0
+            # Verify CLI flag filename is used, not in-query
+            assert "correct.png" in result.output
+            assert os.path.exists("correct.png")
+            assert not os.path.exists("wrong.png")
+
+    def test_custom_filename_with_subdirectory(self, tmp_path, monkeypatch):
+        """Test custom filename with subdirectory creation."""
+        # Use temp config directory
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        # Set defaults so no ambiguity
+        from graph_agent.config import save_user_preferences
+        save_user_preferences(default_style="fd")
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                ["A=10, B=20", "--type", "bar", "--output-file", "charts/output.png"]
+            )
+
+            assert result.exit_code == 0
+            # Verify directory was created and file exists
+            assert os.path.exists("charts/output.png")
+            assert "charts" in result.output
+
+    def test_filename_without_extension_adds_format(self, tmp_path, monkeypatch):
+        """Test that filename without extension gets appropriate extension added."""
+        # Use temp config directory
+        config_dir = tmp_path / ".config" / "graph-agent"
+        config_file = config_dir / "settings.json"
+
+        import graph_agent.config as config_module
+        monkeypatch.setattr(config_module, "CONFIG_DIR", config_dir)
+        monkeypatch.setattr(config_module, "CONFIG_FILE", config_file)
+
+        # Set defaults
+        from graph_agent.config import save_user_preferences
+        save_user_preferences(default_style="fd")
+
+        runner = CliRunner()
+        with runner.isolated_filesystem():
+            result = runner.invoke(
+                main,
+                ["A=10, B=20", "--type", "bar", "--format", "svg", "--output-file", "my_chart"]
+            )
+
+            assert result.exit_code == 0
+            # Verify .svg extension was added
+            assert os.path.exists("my_chart.svg")
+            assert "my_chart.svg" in result.output

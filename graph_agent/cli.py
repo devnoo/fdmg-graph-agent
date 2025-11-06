@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def run_direct_mode(
-    prompt: str, style: str = "fd", format: str = "png", chart_type: str = "bar"
+    prompt: str, style: str = "fd", format: str = "png", chart_type: str = "bar", output_file: str = None
 ) -> None:
     """
     Execute the agent in direct mode with a single prompt.
@@ -30,9 +30,10 @@ def run_direct_mode(
         style: Brand style ('fd' or 'bnr'), defaults to 'fd'
         format: Output format ('png' or 'svg'), defaults to 'png'
         chart_type: Chart type ('bar' or 'line'), defaults to 'bar'
+        output_file: Custom output filename, defaults to None
     """
     logger.info(f"Starting direct mode with prompt: {prompt[:50]}...")
-    logger.debug(f"Parameters: type={chart_type}, style={style}, format={format}")
+    logger.debug(f"Parameters: type={chart_type}, style={style}, format={format}, output_file={output_file}")
 
     graph = create_graph()
 
@@ -49,6 +50,7 @@ def run_direct_mode(
         input_data=None,
         chart_request=chart_request,
         missing_params=None,
+        output_filename=output_file,
         final_filepath=None,
     )
 
@@ -101,6 +103,7 @@ def run_conversational_mode() -> None:
         input_data=None,
         chart_request={"type": None, "style": None, "format": None},
         missing_params=None,
+        output_filename=None,
         final_filepath=None,
     )
     logger.debug("Initialized session state")
@@ -144,6 +147,7 @@ def run_conversational_mode() -> None:
             input_data=session_state.get("input_data"),
             chart_request=session_state.get("chart_request") or {"type": None, "style": None, "format": None},
             missing_params=session_state.get("missing_params"),
+            output_filename=session_state.get("output_filename"),
             final_filepath=session_state.get("final_filepath"),
         )
         logger.debug(f"Updated session state with user message (total messages: {len(session_state['messages'])})")
@@ -185,13 +189,19 @@ def run_conversational_mode() -> None:
     help="Chart type (default: bar)",
 )
 @click.option(
+    "--output-file",
+    type=str,
+    default=None,
+    help="Custom output filename (e.g., 'my_chart.png' or 'charts/output.svg')",
+)
+@click.option(
     "--log-level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
     default="INFO",
     help="Logging level (default: INFO)",
 )
 def main(
-    prompt: str = None, style: str = "fd", format: str = "png", type: str = "bar", log_level: str = "INFO"
+    prompt: str = None, style: str = "fd", format: str = "png", type: str = "bar", output_file: str = None, log_level: str = "INFO"
 ) -> None:
     """
     Graph Agent CLI - Create brand-compliant charts from natural language.
@@ -213,7 +223,7 @@ def main(
     try:
         if prompt:
             # Direct mode
-            run_direct_mode(prompt, style=style, format=format, chart_type=type)
+            run_direct_mode(prompt, style=style, format=format, chart_type=type, output_file=output_file)
         else:
             # Conversational mode
             run_conversational_mode()

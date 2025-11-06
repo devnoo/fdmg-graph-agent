@@ -178,6 +178,7 @@ def matplotlib_chart_generator(
     chart_type: Literal["bar", "line"],
     style: Literal["fd", "bnr"],
     format: Literal["png", "svg"],
+    output_filename: str | None = None,
 ) -> str:
     """
     Generate a brand-styled chart using matplotlib.
@@ -187,6 +188,8 @@ def matplotlib_chart_generator(
         chart_type: Type of chart to generate ('bar' or 'line')
         style: Brand style to apply ('fd' or 'bnr')
         format: Output format ('png' or 'svg')
+        output_filename: Optional custom filename (e.g., 'my_chart.png', 'charts/output.svg')
+                        If not provided, uses timestamp-based name
 
     Returns:
         Absolute path to the generated chart file
@@ -196,6 +199,9 @@ def matplotlib_chart_generator(
         >>> filepath = matplotlib_chart_generator(data, "bar", "fd", "png")
         >>> print(filepath)
         /home/user/chart-20251106143000.png
+        >>> filepath = matplotlib_chart_generator(data, "bar", "fd", "png", "my_chart.png")
+        >>> print(filepath)
+        /home/user/my_chart.png
     """
     # Parse data
     data_points = json.loads(data)
@@ -231,10 +237,42 @@ def matplotlib_chart_generator(
     # Adjust layout for better spacing
     plt.tight_layout()
 
-    # Generate filename with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"chart-{timestamp}.{format}"
-    filepath = os.path.abspath(filename)
+    # Determine output filepath
+    if output_filename:
+        # Custom filename provided
+        logger.info(f"matplotlib_chart_generator: Using custom filename: {output_filename}")
+
+        # Convert to Path object
+        output_path = Path(output_filename)
+
+        # Check if extension is provided
+        if output_path.suffix:
+            # Validate extension matches format
+            expected_ext = f".{format}"
+            if output_path.suffix.lower() != expected_ext:
+                logger.warning(f"matplotlib_chart_generator: Extension mismatch - "
+                             f"filename has '{output_path.suffix}', expected '{expected_ext}'. "
+                             f"Using filename as-is.")
+        else:
+            # No extension provided, add one
+            output_path = output_path.with_suffix(f".{format}")
+            logger.debug(f"matplotlib_chart_generator: Added extension: {output_path}")
+
+        # Make absolute if relative
+        if not output_path.is_absolute():
+            output_path = Path.cwd() / output_path
+
+        # Create parent directories if they don't exist
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"matplotlib_chart_generator: Ensured directory exists: {output_path.parent}")
+
+        filepath = str(output_path)
+    else:
+        # Generate filename with timestamp (fallback)
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"chart-{timestamp}.{format}"
+        filepath = os.path.abspath(filename)
+        logger.debug(f"matplotlib_chart_generator: Using timestamp-based filename: {filepath}")
 
     # Save figure
     plt.savefig(
@@ -248,4 +286,5 @@ def matplotlib_chart_generator(
     # Close figure to free memory
     plt.close(fig)
 
+    logger.info(f"matplotlib_chart_generator: Chart saved to: {filepath}")
     return filepath

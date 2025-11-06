@@ -16,6 +16,7 @@ class GraphState(TypedDict):
         input_data: JSON string of extracted data points (e.g., '[{"label": "A", "value": 10}, ...]')
         chart_request: Dictionary with chart parameters (type, style, format)
         missing_params: List of missing parameters that need clarification (e.g., ["type", "style"])
+        output_filename: User-specified output filename (from CLI flag or in-query detection)
         final_filepath: Absolute path to the generated chart file
     """
 
@@ -27,4 +28,5 @@ class GraphState(TypedDict):
     input_data: str | None
     chart_request: dict | None
     missing_params: list[str] | None
+    output_filename: str | None
     final_filepath: str | None

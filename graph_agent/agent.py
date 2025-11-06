@@ -166,6 +166,7 @@ JSON response:"""
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         missing_params=state.get("missing_params"),
+        output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -233,6 +234,7 @@ def report_error(state: GraphState) -> GraphState:
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         missing_params=state.get("missing_params"),
+        output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -286,6 +288,7 @@ def handle_config(state: GraphState) -> GraphState:
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         missing_params=state.get("missing_params"),
+        output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -313,14 +316,15 @@ def extract_data(state: GraphState) -> GraphState:
     logger.debug(f"extract_data: Processing message: {user_message[:100]}...")
 
     # Create prompt for data and parameter extraction
-    extraction_prompt = """Extract data and chart parameters from the following text.
+    extraction_prompt = """Extract data, chart parameters, and output filename from the following text.
 
 Return a JSON object with this exact format:
 {{
   "data": [{{"label": "label1", "value": number1}}, {{"label": "label2", "value": number2}}, ...],
   "type": "bar" or "line" or null,
   "style": "fd" or "bnr" or null,
-  "format": "png" or "svg" or null
+  "format": "png" or "svg" or null,
+  "filename": "string" or null
 }}
 
 Data extraction examples:
@@ -335,10 +339,18 @@ Parameter extraction examples:
 - "PNG format" or "as PNG" or "save as PNG" -> "format": "png"
 - "SVG format" or "as SVG" or "save as SVG" -> "format": "svg"
 
+Filename extraction examples:
+- "save as results.png" -> "filename": "results.png"
+- "call it quarterly_revenue.svg" -> "filename": "quarterly_revenue.svg"
+- "name it sales_chart" -> "filename": "sales_chart"
+- "output file charts/output.png" -> "filename": "charts/output.png"
+- No filename mentioned -> "filename": null
+
 IMPORTANT:
 - Return ONLY the JSON object, no other text
 - Set parameters to null if not mentioned in the text
 - Always extract the data array
+- Extract filename only if explicitly requested
 
 Text to extract from: {text}
 
@@ -379,8 +391,9 @@ JSON object:"""
         extracted_type = parsed.get("type")
         extracted_style = parsed.get("style")
         extracted_format = parsed.get("format")
+        extracted_filename = parsed.get("filename")
         logger.debug(f"extract_data: Extracted parameters from NL - type: {extracted_type}, "
-                    f"style: {extracted_style}, format: {extracted_format}")
+                    f"style: {extracted_style}, format: {extracted_format}, filename: {extracted_filename}")
 
     except (json.JSONDecodeError, AttributeError) as e:
         # If invalid, create default structure
@@ -390,6 +403,7 @@ JSON object:"""
         extracted_type = None
         extracted_style = None
         extracted_format = None
+        extracted_filename = None
 
     # Get current chart_request or create default
     chart_request = state.get("chart_request") or {"type": None, "style": None, "format": None}
@@ -436,6 +450,20 @@ JSON object:"""
     logger.info(f"extract_data: Final chart_request: type={chart_request['type']}, "
                f"style={chart_request['style']}, format={chart_request['format']}")
 
+    # Apply filename priority: CLI flag > in-query > None (fallback in tool)
+    # Priority 1: CLI flag (already in state if provided)
+    # Priority 2: In-query extraction (extracted_filename)
+    # Priority 3: None (will use timestamp fallback in matplotlib_chart_generator)
+    output_filename = state.get("output_filename")  # CLI flag takes priority
+    if not output_filename and extracted_filename:
+        # Use extracted filename from query if no CLI flag
+        output_filename = extracted_filename
+        logger.info(f"extract_data: Using filename from query: {output_filename}")
+    elif output_filename:
+        logger.info(f"extract_data: Using filename from CLI flag: {output_filename}")
+    else:
+        logger.debug("extract_data: No filename specified, will use timestamp fallback")
+
     # Update state
     return GraphState(
         messages=state["messages"],
@@ -446,6 +474,7 @@ JSON object:"""
         input_data=input_data,
         chart_request=chart_request,
         missing_params=state.get("missing_params"),
+        output_filename=output_filename,
         final_filepath=state.get("final_filepath"),
     )
 
@@ -572,6 +601,7 @@ def resolve_ambiguity(state: GraphState) -> GraphState:
         input_data=state.get("input_data"),
         chart_request=chart_req,
         missing_params=missing if missing else None,
+        output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -621,6 +651,7 @@ def ask_clarification(state: GraphState) -> GraphState:
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         missing_params=missing,
+        output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
     )
 
@@ -645,6 +676,7 @@ def generate_chart_tool(state: GraphState) -> GraphState:
     # Get chart parameters
     chart_request = state["chart_request"]
     input_data = state["input_data"]
+    output_filename = state.get("output_filename")
 
     # Generate chart
     filepath = matplotlib_chart_generator(
@@ -652,6 +684,7 @@ def generate_chart_tool(state: GraphState) -> GraphState:
         chart_type=chart_request["type"],
         style=chart_request["style"],
         format=chart_request["format"],
+        output_filename=output_filename,
     )
 
     # Update last used preferences
@@ -677,6 +710,7 @@ def generate_chart_tool(state: GraphState) -> GraphState:
         input_data=state["input_data"],
         chart_request=state["chart_request"],
         missing_params=state.get("missing_params"),
+        output_filename=state.get("output_filename"),
         final_filepath=filepath,
     )
 
@@ -740,6 +774,7 @@ File path:"""
             input_data=state.get("input_data"),
             chart_request=state.get("chart_request"),
             missing_params=state.get("missing_params"),
+            output_filename=state.get("output_filename"),
             final_filepath=state.get("final_filepath"),
         )
 
@@ -831,6 +866,7 @@ JSON object:"""
             input_data=data_json,
             chart_request=chart_request,
             missing_params=state.get("missing_params"),
+            output_filename=state.get("output_filename"),
             final_filepath=state.get("final_filepath"),
         )
 
@@ -852,6 +888,7 @@ JSON object:"""
             input_data=state.get("input_data"),
             chart_request=state.get("chart_request"),
             missing_params=state.get("missing_params"),
+            output_filename=state.get("output_filename"),
             final_filepath=state.get("final_filepath"),
         )
 

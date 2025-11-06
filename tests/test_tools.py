@@ -263,3 +263,159 @@ def test_parse_excel_a1_absolute_path():
     # Verify it parsed successfully
     data = json.loads(result)
     assert len(data) == 4
+
+
+# Tests for custom filename handling (Story 9)
+
+
+def test_matplotlib_chart_generator_custom_filename_with_extension():
+    """Test custom filename with extension."""
+    from graph_agent.tools import matplotlib_chart_generator
+    from pathlib import Path
+
+    data = json.dumps([{"label": "A", "value": 10}])
+    custom_name = "my_custom_chart.png"
+
+    filepath = matplotlib_chart_generator(
+        data=data,
+        chart_type="bar",
+        style="fd",
+        format="png",
+        output_filename=custom_name
+    )
+
+    # Verify custom filename was used
+    assert Path(filepath).name == custom_name
+    assert os.path.exists(filepath)
+
+    # Cleanup
+    os.remove(filepath)
+
+
+def test_matplotlib_chart_generator_custom_filename_without_extension():
+    """Test custom filename without extension - should add appropriate extension."""
+    from graph_agent.tools import matplotlib_chart_generator
+    from pathlib import Path
+
+    data = json.dumps([{"label": "A", "value": 10}])
+    custom_name = "my_chart_no_ext"
+
+    filepath = matplotlib_chart_generator(
+        data=data,
+        chart_type="bar",
+        style="fd",
+        format="png",
+        output_filename=custom_name
+    )
+
+    # Verify extension was added
+    assert Path(filepath).name == "my_chart_no_ext.png"
+    assert os.path.exists(filepath)
+
+    # Cleanup
+    os.remove(filepath)
+
+
+def test_matplotlib_chart_generator_custom_filename_with_subdirectory():
+    """Test custom filename with subdirectory - should create directory."""
+    from graph_agent.tools import matplotlib_chart_generator
+    from pathlib import Path
+    import shutil
+
+    data = json.dumps([{"label": "A", "value": 10}])
+    custom_name = "test_charts/subdir/chart.png"
+
+    filepath = matplotlib_chart_generator(
+        data=data,
+        chart_type="bar",
+        style="fd",
+        format="png",
+        output_filename=custom_name
+    )
+
+    # Verify directory was created and file exists
+    assert os.path.exists(filepath)
+    assert "test_charts" in filepath
+    assert "subdir" in filepath
+
+    # Cleanup - remove entire test_charts directory
+    base_dir = Path.cwd() / "test_charts"
+    if base_dir.exists():
+        shutil.rmtree(base_dir)
+
+
+def test_matplotlib_chart_generator_custom_filename_svg_format():
+    """Test custom filename with SVG format."""
+    from graph_agent.tools import matplotlib_chart_generator
+    from pathlib import Path
+
+    data = json.dumps([{"label": "A", "value": 10}])
+    custom_name = "my_svg_chart.svg"
+
+    filepath = matplotlib_chart_generator(
+        data=data,
+        chart_type="line",
+        style="bnr",
+        format="svg",
+        output_filename=custom_name
+    )
+
+    # Verify custom filename and format
+    assert Path(filepath).name == custom_name
+    assert filepath.endswith(".svg")
+    assert os.path.exists(filepath)
+
+    # Cleanup
+    os.remove(filepath)
+
+
+def test_matplotlib_chart_generator_custom_filename_absolute_path():
+    """Test custom filename with absolute path."""
+    from graph_agent.tools import matplotlib_chart_generator
+    from pathlib import Path
+    import tempfile
+
+    data = json.dumps([{"label": "A", "value": 10}])
+
+    # Create temp directory and specify absolute path
+    with tempfile.TemporaryDirectory() as tmpdir:
+        custom_name = os.path.join(tmpdir, "absolute_chart.png")
+
+        filepath = matplotlib_chart_generator(
+            data=data,
+            chart_type="bar",
+            style="fd",
+            format="png",
+            output_filename=custom_name
+        )
+
+        # Verify absolute path was used correctly
+        assert filepath == custom_name
+        assert os.path.exists(filepath)
+        # File will be cleaned up automatically with tmpdir
+
+
+def test_matplotlib_chart_generator_extension_mismatch_warning():
+    """Test filename with extension mismatch (should use filename as-is with warning)."""
+    from graph_agent.tools import matplotlib_chart_generator
+    from pathlib import Path
+
+    data = json.dumps([{"label": "A", "value": 10}])
+    # Request PNG format but provide .svg extension in filename
+    custom_name = "mismatch_chart.svg"
+
+    filepath = matplotlib_chart_generator(
+        data=data,
+        chart_type="bar",
+        style="fd",
+        format="png",  # Format is PNG
+        output_filename=custom_name  # But filename has .svg
+    )
+
+    # Should use filename as provided (with warning logged)
+    assert Path(filepath).name == custom_name
+    assert filepath.endswith(".svg")
+    assert os.path.exists(filepath)
+
+    # Cleanup
+    os.remove(filepath)

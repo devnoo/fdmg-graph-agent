@@ -1,10 +1,10 @@
 ---
 id: task-9
 title: 'Story 9: File Output Naming'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-11-06 13:36'
-updated_date: '2025-11-06 13:36'
+updated_date: '2025-11-06 22:41'
 labels:
   - phase-5
   - file-naming
@@ -160,16 +160,16 @@ Handle edge cases gracefully:
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 CLI --output-file flag sets custom filename
-- [ ] #2 Agent detects 'save as' patterns in conversational queries
-- [ ] #3 CLI flag takes priority over in-query filename
-- [ ] #4 File extension is validated and corrected if needed
-- [ ] #5 Missing extension is added based on format
-- [ ] #6 Relative paths work correctly (saves in subdirectories)
-- [ ] #7 Absolute paths work correctly
-- [ ] #8 Parent directories are created if they don't exist
-- [ ] #9 Fallback to chart-[timestamp].[ext] when no filename specified
-- [ ] #10 Timestamp format is YYYYMMDDHHmmss (14 digits)
+- [x] #1 CLI --output-file flag sets custom filename
+- [x] #2 Agent detects 'save as' patterns in conversational queries
+- [x] #3 CLI flag takes priority over in-query filename
+- [x] #4 File extension is validated and corrected if needed
+- [x] #5 Missing extension is added based on format
+- [x] #6 Relative paths work correctly (saves in subdirectories)
+- [x] #7 Absolute paths work correctly
+- [x] #8 Parent directories are created if they don't exist
+- [x] #9 Fallback to chart-[timestamp].[ext] when no filename specified
+- [x] #10 Timestamp format is YYYYMMDDHHmmss (14 digits)
 <!-- AC:END -->
 
 ## Implementation Plan
