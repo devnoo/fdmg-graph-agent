@@ -1,8 +1,12 @@
 """CLI entry point for Graph Agent."""
 
 import click
+from dotenv import load_dotenv
 from graph_agent.agent import create_graph
 from graph_agent.state import GraphState
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def run_direct_mode(

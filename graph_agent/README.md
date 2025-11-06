@@ -2,7 +2,23 @@
 
 ## Prerequisites
 
-Before using the Graph Agent CLI, you must set the `GOOGLE_API_KEY` environment variable:
+Before using the Graph Agent CLI, you must set the `GOOGLE_API_KEY` environment variable.
+
+### Option 1: Using .env file (Recommended)
+
+1. Copy the example file:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. Edit `.env` and add your Google AI API key:
+   ```bash
+   GOOGLE_API_KEY=your-google-ai-api-key-here
+   ```
+
+Get your API key at: https://aistudio.google.com/app/apikey
+
+### Option 2: Using export
 
 ```bash
 export GOOGLE_API_KEY="your-google-ai-api-key"

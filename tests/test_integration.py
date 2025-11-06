@@ -24,10 +24,10 @@ class TestIntegrationWithRealLLM:
     def test_direct_mode_chart_request_real_llm(self):
         """Test direct mode with chart request using real LLM."""
         runner = CliRunner()
-        result = runner.invoke(main, ["create a bar chart"])
+        result = runner.invoke(main, ["A=10, B=20, C=30"])
 
         assert result.exit_code == 0
-        assert "not yet implemented" in result.output.lower()
+        assert "chart saved:" in result.output.lower()
 
     def test_conversational_mode_real_llm(self):
         """Test conversational mode with real LLM."""
@@ -39,16 +39,17 @@ class TestIntegrationWithRealLLM:
         assert "goodbye" in result.output.lower()
 
 
-def test_cli_without_api_key():
+def test_cli_without_api_key(monkeypatch):
     """Test that CLI fails gracefully without API key."""
     runner = CliRunner()
 
-    # Remove API key from environment
-    env = os.environ.copy()
-    env.pop("GOOGLE_API_KEY", None)
+    # Remove API key from actual environment
+    monkeypatch.delenv("GOOGLE_API_KEY", raising=False)
 
-    result = runner.invoke(main, ["test"], env=env)
+    # Use isolated filesystem to ensure no .env file exists
+    with runner.isolated_filesystem():
+        result = runner.invoke(main, ["test"])
 
-    # Should exit with error
-    assert result.exit_code != 0
-    assert "GOOGLE_API_KEY" in result.output
+        # Should exit with error
+        assert result.exit_code != 0
+        assert "GOOGLE_API_KEY" in result.output

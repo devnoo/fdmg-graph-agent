@@ -5,7 +5,7 @@ status: Done
 assignee:
   - developer
 created_date: '2025-11-06 13:24'
-updated_date: '2025-11-06 14:19'
+updated_date: '2025-11-06 15:56'
 labels:
   - phase-2
   - chart-generation
@@ -379,4 +379,16 @@ graph-agent "A=10, B=20, C=30" --style fd --format png --type bar
 - tests/test_tools.py
 
 **Status**: Story 3 complete! Chart generation fully functional.
+
+## Final Test Fixes (2025-11-06)
+
+Fixed 2 failing integration tests after adding .env support:
+
+1. **test_direct_mode_chart_request_real_llm**: Updated to test actual chart generation with data input "A=10, B=20, C=30" and expects "chart saved:" in output (instead of "not yet implemented")
+
+2. **test_cli_without_api_key**: Fixed by using pytest's monkeypatch fixture to properly remove GOOGLE_API_KEY from environment during test execution
+
+**Final Test Results**: All 45 tests passing ✅
+
+Story 3 is now fully complete with robust test coverage and .env support for secure API key management.
 <!-- SECTION:NOTES:END -->

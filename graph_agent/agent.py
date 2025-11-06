@@ -51,11 +51,14 @@ def parse_intent(state: GraphState) -> GraphState:
     # Create a prompt for intent detection
     system_prompt = """Analyze the following user request and determine if it's about creating a chart or graph.
 
-Chart-related keywords include: chart, graph, bar, line, plot, visualize, visualization, data visualization.
+Chart-related indicators:
+- Keywords: chart, graph, bar, line, plot, visualize, visualization, grafiek, diagram
+- Data patterns: "A=10, B=20", "Monday: 4.1", "Q1=120, Q2=150"
+- Requests with structured numerical data (even without explicit chart keywords)
 
 Respond with EXACTLY one of these two words:
-- 'make_chart' if the request is about creating any type of chart or graph
-- 'off_topic' if the request is about anything else
+- 'make_chart' if the request is about creating a chart/graph OR contains structured data (label=value pairs)
+- 'off_topic' if the request is about anything else (like making sandwiches, booking appointments, etc.)
 
 User request: {request}
 
@@ -70,6 +73,15 @@ Your response (one word only):"""
     # Ensure intent is valid
     if intent not in ["make_chart", "off_topic"]:
         intent = "off_topic"  # Default to off_topic if unclear
+
+    # Fallback: Check for obvious data patterns if LLM said off_topic
+    if intent == "off_topic":
+        import re
+
+        # Look for patterns like "A=10", "Monday: 4.1", "Q1 = 120"
+        data_pattern = r"[A-Za-z0-9]+\s*[=:]\s*[0-9,.]+"
+        if re.search(data_pattern, user_message):
+            intent = "make_chart"
 
     # Update state
     return GraphState(
@@ -158,6 +170,14 @@ JSON array:"""
     # Call LLM
     response = llm.invoke(prompt)
     extracted_json = response.content.strip()
+
+    # Clean up response - remove markdown code blocks if present
+    if extracted_json.startswith("```"):
+        lines = extracted_json.split("\n")
+        extracted_json = "\n".join(lines[1:-1]) if len(lines) > 2 else extracted_json
+        extracted_json = (
+            extracted_json.replace("```json", "").replace("```", "").strip()
+        )
 
     # Validate JSON
     try:
