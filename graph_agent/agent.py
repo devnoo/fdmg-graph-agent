@@ -36,68 +36,109 @@ def get_llm() -> ChatGoogleGenerativeAI:
 def parse_intent(state: GraphState) -> GraphState:
     """
     Parse user intent to determine if request is chart-related or off-topic.
+    Also detects if user mentioned an Excel file path.
 
     This node uses the Gemini LLM to analyze the user's message and classify
     it as either a chart-related request ('make_chart') or an off-topic request
-    ('off_topic').
+    ('off_topic'). It also checks for file path references.
 
     Args:
         state: Current graph state containing messages
 
     Returns:
-        Updated state with intent field populated
+        Updated state with intent and has_file fields populated
     """
+    import json
+    import re
+
     llm = get_llm()
 
     # Get the last user message
     user_message = state["messages"][-1]["content"]
     logger.debug(f"parse_intent: Analyzing message: {user_message[:100]}...")
 
-    # Create a prompt for intent detection
-    system_prompt = """Analyze the following user request and determine if it's about creating a chart or graph.
+    # Enhanced prompt to detect both intent and file presence
+    system_prompt = """Analyze the following user request and determine:
+1. If it's about creating a chart/graph
+2. If it mentions an Excel file (.xlsx or .xls)
 
-Chart-related indicators:
+Return a JSON object with this EXACT format:
+{{
+  "intent": "make_chart" or "off_topic",
+  "has_file": true or false
+}}
+
+Intent should be "make_chart" if:
 - Keywords: chart, graph, bar, line, plot, visualize, visualization, grafiek, diagram
 - Data patterns: "A=10, B=20", "Monday: 4.1", "Q1=120, Q2=150"
 - Requests with structured numerical data (even without explicit chart keywords)
+- Mentions reading from an Excel file
 
-Respond with EXACTLY one of these two words:
-- 'make_chart' if the request is about creating a chart/graph OR contains structured data (label=value pairs)
-- 'off_topic' if the request is about anything else (like making sandwiches, booking appointments, etc.)
+Intent should be "off_topic" for anything else (like making sandwiches, booking appointments, etc.)
+
+has_file should be true if:
+- Mentions a file path ending in .xlsx or .xls
+- Mentions "Excel file", "spreadsheet", "from file"
+- Contains what looks like a file path (e.g., "data.xlsx", "/path/to/file.xlsx", "sales.xls")
 
 User request: {request}
 
-Your response (one word only):"""
+JSON response:"""
 
     prompt = system_prompt.format(request=user_message)
 
     # Call LLM
     response = llm.invoke(prompt)
-    intent = response.content.strip().lower()
-    logger.debug(f"parse_intent: LLM returned intent: {intent}")
+    response_text = response.content.strip()
+    logger.debug(f"parse_intent: LLM returned: {response_text}")
+
+    # Parse JSON response
+    try:
+        # Clean up response - remove markdown code blocks if present
+        if response_text.startswith("```"):
+            lines = response_text.split("\n")
+            response_text = "\n".join(lines[1:-1]) if len(lines) > 2 else response_text
+            response_text = response_text.replace("```json", "").replace("```", "").strip()
+
+        parsed = json.loads(response_text)
+        intent = parsed.get("intent", "off_topic").strip().lower()
+        has_file = parsed.get("has_file", False)
+        logger.debug(f"parse_intent: Parsed - intent: {intent}, has_file: {has_file}")
+
+    except (json.JSONDecodeError, AttributeError) as e:
+        logger.warning(f"parse_intent: Failed to parse JSON response: {e}")
+        # Fall back to basic intent detection
+        intent = "make_chart" if "chart" in user_message.lower() or "graph" in user_message.lower() else "off_topic"
+        # Check for file patterns
+        has_file = bool(re.search(r'\.(xlsx?|xls)\b', user_message, re.IGNORECASE))
 
     # Ensure intent is valid
     if intent not in ["make_chart", "off_topic"]:
         logger.warning(f"parse_intent: Invalid intent '{intent}', defaulting to 'off_topic'")
-        intent = "off_topic"  # Default to off_topic if unclear
+        intent = "off_topic"
 
     # Fallback: Check for obvious data patterns if LLM said off_topic
     if intent == "off_topic":
-        import re
-
         # Look for patterns like "A=10", "Monday: 4.1", "Q1 = 120"
         data_pattern = r"[A-Za-z0-9]+\s*[=:]\s*[0-9,.]+"
         if re.search(data_pattern, user_message):
             logger.info("parse_intent: Detected data pattern, overriding to 'make_chart'")
             intent = "make_chart"
 
-    logger.info(f"parse_intent: Final intent: {intent}")
+    # Fallback: Double-check for file patterns
+    if not has_file:
+        has_file = bool(re.search(r'\.(xlsx?|xls)\b', user_message, re.IGNORECASE))
+        if has_file:
+            logger.info("parse_intent: Regex detected file pattern")
+
+    logger.info(f"parse_intent: Final - intent: {intent}, has_file: {has_file}")
 
     # Update state
     return GraphState(
         messages=state["messages"],
         interaction_mode=state["interaction_mode"],
         intent=intent,
+        has_file=has_file,
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         final_filepath=state.get("final_filepath"),
@@ -132,6 +173,7 @@ def reject_task(state: GraphState) -> GraphState:
         messages=updated_messages,
         interaction_mode=state["interaction_mode"],
         intent=state["intent"],
+        has_file=state.get("has_file", False),
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         final_filepath=state.get("final_filepath"),
@@ -268,6 +310,7 @@ JSON object:"""
         messages=state["messages"],
         interaction_mode=state["interaction_mode"],
         intent=state["intent"],
+        has_file=state.get("has_file", False),
         input_data=input_data,
         chart_request=chart_request,
         final_filepath=state.get("final_filepath"),
@@ -311,38 +354,193 @@ def generate_chart_tool(state: GraphState) -> GraphState:
         messages=updated_messages,
         interaction_mode=state["interaction_mode"],
         intent=state["intent"],
+        has_file=state.get("has_file", False),
         input_data=state["input_data"],
         chart_request=state["chart_request"],
         final_filepath=filepath,
     )
 
 
-def route_after_intent(state: GraphState) -> str:
+def call_data_tool(state: GraphState) -> GraphState:
     """
-    Route to appropriate node based on detected intent.
+    Extract file path from user message and parse Excel file.
 
-    For make_chart intent:
-    - Always proceed to extract_data node (handles both direct and conversational modes)
-    - Direct mode: extract_data uses pre-set chart_request parameters from CLI flags
-    - Conversational mode: extract_data extracts parameters from natural language
+    This node uses the LLM to extract the file path, then calls parse_excel_a1
+    to extract data from the Excel file.
 
     Args:
-        state: Current graph state with intent populated
+        state: Current graph state with file reference in messages
+
+    Returns:
+        Updated state with input_data populated from Excel file
+    """
+    import json
+    from graph_agent.tools import parse_excel_a1
+
+    llm = get_llm()
+
+    # Get the last user message
+    user_message = state["messages"][-1]["content"]
+    logger.debug(f"call_data_tool: Extracting file path from: {user_message[:100]}...")
+
+    # Create prompt to extract file path
+    extraction_prompt = """Extract the Excel file path from the following text.
+
+Return ONLY the file path (without quotes) or "NONE" if no file path is found.
+
+Examples:
+- "create chart from sales.xlsx" -> sales.xlsx
+- "make a graph from /home/user/data.xlsx" -> /home/user/data.xlsx
+- "chart with quarterly_revenue.xls" -> quarterly_revenue.xls
+- "make a chart with A=10, B=20" -> NONE
+
+Text: {text}
+
+File path:"""
+
+    prompt = extraction_prompt.format(text=user_message)
+
+    # Call LLM to extract file path
+    logger.debug("call_data_tool: Calling LLM to extract file path")
+    response = llm.invoke(prompt)
+    file_path = response.content.strip()
+    logger.debug(f"call_data_tool: Extracted file path: {file_path}")
+
+    # Check if valid file path was extracted
+    if file_path.upper() == "NONE" or not file_path:
+        logger.warning("call_data_tool: No file path found, falling back to extract_data")
+        # If no file found, this shouldn't happen if has_file was true, but handle gracefully
+        # Set has_file to False and return state unchanged
+        return GraphState(
+            messages=state["messages"],
+            interaction_mode=state["interaction_mode"],
+            intent=state["intent"],
+            has_file=False,
+            input_data=state.get("input_data"),
+            chart_request=state.get("chart_request"),
+            final_filepath=state.get("final_filepath"),
+        )
+
+    # Try to parse the Excel file
+    try:
+        logger.info(f"call_data_tool: Parsing Excel file: {file_path}")
+        data_json = parse_excel_a1(file_path)
+        logger.info(f"call_data_tool: Successfully parsed file")
+
+        # Also extract chart parameters from the message
+        # Get current chart_request or create default
+        chart_request = state.get("chart_request") or {"type": None, "style": None, "format": None}
+
+        # Extract parameters from natural language
+        param_prompt = """Extract chart parameters from the following text.
+
+Return a JSON object with this exact format:
+{{
+  "type": "bar" or "line" or null,
+  "style": "fd" or "bnr" or null,
+  "format": "png" or "svg" or null
+}}
+
+Set parameters to null if not mentioned.
+
+Text: {text}
+
+JSON object:"""
+
+        param_response = llm.invoke(param_prompt.format(text=user_message))
+        param_json = param_response.content.strip()
+
+        # Clean up response
+        if param_json.startswith("```"):
+            lines = param_json.split("\n")
+            param_json = "\n".join(lines[1:-1]) if len(lines) > 2 else param_json
+            param_json = param_json.replace("```json", "").replace("```", "").strip()
+
+        try:
+            params = json.loads(param_json)
+            if params.get("type"):
+                chart_request["type"] = params["type"]
+            if params.get("style"):
+                chart_request["style"] = params["style"]
+            if params.get("format"):
+                chart_request["format"] = params["format"]
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("call_data_tool: Failed to parse parameters, using defaults")
+
+        # Apply defaults for missing parameters
+        if chart_request["type"] is None:
+            chart_request["type"] = "bar"
+        if chart_request["style"] is None:
+            chart_request["style"] = "fd"
+        if chart_request["format"] is None:
+            chart_request["format"] = "png"
+
+        logger.info(f"call_data_tool: Chart parameters: type={chart_request['type']}, "
+                   f"style={chart_request['style']}, format={chart_request['format']}")
+
+        # Return updated state with data from Excel
+        return GraphState(
+            messages=state["messages"],
+            interaction_mode=state["interaction_mode"],
+            intent=state["intent"],
+            has_file=True,
+            input_data=data_json,
+            chart_request=chart_request,
+            final_filepath=state.get("final_filepath"),
+        )
+
+    except ValueError as e:
+        # Error parsing Excel file - add error message to conversation
+        logger.error(f"call_data_tool: Error parsing Excel file: {e}")
+        error_message = str(e)
+        updated_messages = state["messages"] + [
+            {"role": "assistant", "content": error_message}
+        ]
+
+        # Return state with error message
+        return GraphState(
+            messages=updated_messages,
+            interaction_mode=state["interaction_mode"],
+            intent="off_topic",  # Set to off_topic to end conversation
+            has_file=state.get("has_file", False),
+            input_data=state.get("input_data"),
+            chart_request=state.get("chart_request"),
+            final_filepath=state.get("final_filepath"),
+        )
+
+
+def route_after_intent(state: GraphState) -> str:
+    """
+    Route to appropriate node based on detected intent and file presence.
+
+    For make_chart intent:
+    - If has_file=True: Route to call_data_tool to parse Excel file
+    - If has_file=False: Route to extract_data to extract from natural language
+
+    For off_topic intent:
+    - Route to reject_task
+
+    Args:
+        state: Current graph state with intent and has_file populated
 
     Returns:
         Name of next node to execute
     """
     intent = state["intent"]
+    has_file = state.get("has_file", False)
     mode = state["interaction_mode"]
-    logger.debug(f"route_after_intent: Intent={intent}, Mode={mode}")
+    logger.debug(f"route_after_intent: Intent={intent}, HasFile={has_file}, Mode={mode}")
 
-    if state["intent"] == "off_topic":
+    if intent == "off_topic":
         logger.info("route_after_intent: Routing to reject_task (off-topic)")
         return "reject_task"
-    elif state["intent"] == "make_chart":
-        # Proceed to extract_data for both direct and conversational modes
-        logger.info(f"route_after_intent: Routing to extract_data ({mode} mode)")
-        return "extract_data"
+    elif intent == "make_chart":
+        if has_file:
+            logger.info(f"route_after_intent: Routing to call_data_tool (file-based, {mode} mode)")
+            return "call_data_tool"
+        else:
+            logger.info(f"route_after_intent: Routing to extract_data (text-based, {mode} mode)")
+            return "extract_data"
     else:
         logger.warning(f"route_after_intent: Unknown intent '{intent}', routing to reject_task")
         return "reject_task"
@@ -353,12 +551,14 @@ def create_graph() -> Any:
     Create and compile the LangGraph workflow.
 
     The workflow consists of:
-    1. parse_intent: Analyzes user request and determines intent
+    1. parse_intent: Analyzes user request and determines intent and file presence
     2. Conditional routing:
        - If off_topic: reject_task -> END
-       - If make_chart: extract_data -> generate_chart -> END
-    3. extract_data: Extracts structured data from natural language
-    4. generate_chart: Creates chart file using matplotlib
+       - If make_chart + has_file: call_data_tool -> generate_chart -> END
+       - If make_chart + no file: extract_data -> generate_chart -> END
+    3. call_data_tool: Parses Excel file and extracts data
+    4. extract_data: Extracts structured data from natural language
+    5. generate_chart: Creates chart file using matplotlib
 
     Returns:
         Compiled LangGraph workflow
@@ -368,6 +568,7 @@ def create_graph() -> Any:
     # Add nodes
     workflow.add_node("parse_intent", parse_intent)
     workflow.add_node("reject_task", reject_task)
+    workflow.add_node("call_data_tool", call_data_tool)  # NEW: Excel file parsing
     workflow.add_node("extract_data", extract_data)
     workflow.add_node("generate_chart", generate_chart_tool)
 
@@ -378,10 +579,15 @@ def create_graph() -> Any:
     workflow.add_conditional_edges(
         "parse_intent",
         route_after_intent,
-        {"reject_task": "reject_task", "extract_data": "extract_data"},
+        {
+            "reject_task": "reject_task",
+            "call_data_tool": "call_data_tool",
+            "extract_data": "extract_data",
+        },
     )
 
     # Add edges for chart generation flow
+    workflow.add_edge("call_data_tool", "generate_chart")  # NEW: File-based flow
     workflow.add_edge("extract_data", "generate_chart")
 
     # Add terminal edges
