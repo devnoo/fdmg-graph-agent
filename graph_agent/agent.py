@@ -415,6 +415,181 @@ JSON object:"""
     )
 
 
+def is_categorical_data(data_json: str) -> bool:
+    """
+    Determine if data is categorical (vs time-series).
+
+    Time-series data contains temporal indicators like months, quarters, or years.
+    Categorical data contains generic labels like names, categories, or arbitrary labels.
+
+    Args:
+        data_json: JSON string of data points
+
+    Returns:
+        True if data is categorical, False if time-series
+    """
+    import json
+
+    try:
+        data = json.loads(data_json)
+    except (json.JSONDecodeError, TypeError):
+        logger.warning("is_categorical_data: Invalid JSON, defaulting to categorical")
+        return True
+
+    if not data:
+        return True
+
+    # Time indicators
+    time_keywords = [
+        'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+        'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september',
+        'october', 'november', 'december',
+        'q1', 'q2', 'q3', 'q4', 'quarter',
+        '2020', '2021', '2022', '2023', '2024', '2025', '2026', '2027', '2028', '2029', '2030'
+    ]
+
+    # Check first few labels for time indicators
+    for item in data[:3]:  # Check first 3 labels
+        label = str(item.get('label', '')).lower()
+        if any(keyword in label for keyword in time_keywords):
+            logger.info(f"is_categorical_data: Detected time-series pattern in label '{label}'")
+            return False  # Time-series
+
+    logger.info("is_categorical_data: No time-series patterns detected, treating as categorical")
+    return True  # Categorical
+
+
+def resolve_ambiguity(state: GraphState) -> GraphState:
+    """
+    Check for missing chart parameters and determine if clarification is needed.
+
+    This node applies the priority resolution logic and checks if any required
+    parameters are still missing after all fallbacks have been tried.
+
+    For chart type:
+    - If explicitly set → use it
+    - If data is time-series → default to line
+    - If data is categorical → mark as missing (need to ask)
+
+    For style:
+    - Apply priority: Explicit > Default > Last Used > None
+    - If still None → mark as missing (need to ask)
+
+    For format:
+    - Always has a fallback to PNG, never missing
+
+    Args:
+        state: Current graph state with input_data and chart_request
+
+    Returns:
+        Updated state with missing_params populated and chart_request resolved
+    """
+    from graph_agent.config import load_user_preferences
+
+    prefs = load_user_preferences()
+    chart_req = state.get("chart_request") or {"type": None, "style": None, "format": None}
+    missing = []
+
+    logger.debug(f"resolve_ambiguity: Initial chart_request: {chart_req}")
+    logger.debug(f"resolve_ambiguity: Loaded preferences: {prefs}")
+
+    # Check chart type
+    if not chart_req.get("type"):
+        # If data is categorical, we need to ask
+        if is_categorical_data(state.get("input_data")):
+            missing.append("type")
+            logger.info("resolve_ambiguity: Type missing for categorical data")
+        else:
+            # Time-series: default to line
+            chart_req["type"] = "line"
+            logger.info("resolve_ambiguity: Defaulted type to 'line' for time-series data")
+
+    # Check style (already applied priority logic in extract_data/call_data_tool, but double-check)
+    if not chart_req.get("style"):
+        chart_req["style"] = (
+            prefs.get("default_style") or
+            prefs.get("last_used_style") or
+            None
+        )
+        if not chart_req["style"]:
+            missing.append("style")
+            logger.info("resolve_ambiguity: Style missing (no default or last_used)")
+
+    # Format always has fallback, never missing
+    if not chart_req.get("format"):
+        chart_req["format"] = (
+            prefs.get("default_format") or
+            prefs.get("last_used_format") or
+            "png"
+        )
+        logger.debug(f"resolve_ambiguity: Format resolved to: {chart_req['format']}")
+
+    logger.info(f"resolve_ambiguity: Missing parameters: {missing}")
+    logger.info(f"resolve_ambiguity: Final chart_request: {chart_req}")
+
+    # Update state
+    return GraphState(
+        messages=state["messages"],
+        interaction_mode=state["interaction_mode"],
+        intent=state["intent"],
+        has_file=state.get("has_file", False),
+        config_change=state.get("config_change"),
+        input_data=state.get("input_data"),
+        chart_request=chart_req,
+        missing_params=missing if missing else None,
+        final_filepath=state.get("final_filepath"),
+    )
+
+
+def ask_clarification(state: GraphState) -> GraphState:
+    """
+    Generate English clarification question for missing parameters.
+
+    This node creates a natural language question asking the user to provide
+    the missing chart parameters. Questions are always in English per architecture.
+
+    Args:
+        state: Current graph state with missing_params populated
+
+    Returns:
+        Updated state with clarification question added to messages
+    """
+    missing = state.get("missing_params", [])
+
+    if not missing:
+        logger.warning("ask_clarification: Called but no missing params")
+        return state
+
+    # Generate appropriate question based on what's missing
+    if "type" in missing and "style" in missing:
+        question = "I have your data. What type of chart (bar/line) and which style (FD/BNR)?"
+        logger.info("ask_clarification: Asking for both type and style")
+    elif "type" in missing:
+        question = "What type of chart would you like: bar or line?"
+        logger.info("ask_clarification: Asking for type only")
+    elif "style" in missing:
+        question = "Which brand style would you like: FD or BNR?"
+        logger.info("ask_clarification: Asking for style only")
+    else:
+        question = "I need more information to create your chart."
+        logger.warning(f"ask_clarification: Unexpected missing params: {missing}")
+
+    # Add question to conversation
+    updated_messages = state["messages"] + [{"role": "assistant", "content": question}]
+
+    return GraphState(
+        messages=updated_messages,
+        interaction_mode=state["interaction_mode"],
+        intent=state["intent"],
+        has_file=state.get("has_file", False),
+        config_change=state.get("config_change"),
+        input_data=state.get("input_data"),
+        chart_request=state.get("chart_request"),
+        missing_params=missing,
+        final_filepath=state.get("final_filepath"),
+    )
+
+
 def generate_chart_tool(state: GraphState) -> GraphState:
     """
     Generate chart using matplotlib tool and save to file.
@@ -682,6 +857,43 @@ def route_after_intent(state: GraphState) -> str:
         return "reject_task"
 
 
+def route_after_resolve(state: GraphState) -> str:
+    """
+    Route based on missing parameters and interaction mode.
+
+    If parameters are missing:
+    - Conversational mode: Ask clarification questions
+    - Direct mode: Would fail (handled in Story 8)
+
+    If all parameters present:
+    - Continue to chart generation
+
+    Args:
+        state: Current graph state with missing_params populated
+
+    Returns:
+        Name of next node to execute
+    """
+    missing = state.get("missing_params")
+    mode = state["interaction_mode"]
+
+    logger.debug(f"route_after_resolve: Missing={missing}, Mode={mode}")
+
+    if missing:
+        if mode == "conversational":
+            logger.info("route_after_resolve: Routing to ask_clarification (conversational mode)")
+            return "ask_clarification"
+        else:
+            # Direct mode with missing params - would fail
+            # For now, route to generate_chart which will use defaults
+            # Story 8 will add proper error handling
+            logger.warning("route_after_resolve: Missing params in direct mode, proceeding anyway")
+            return "generate_chart"
+    else:
+        logger.info("route_after_resolve: All params present, routing to generate_chart")
+        return "generate_chart"
+
+
 def create_graph() -> Any:
     """
     Create and compile the LangGraph workflow.
@@ -691,12 +903,17 @@ def create_graph() -> Any:
     2. Conditional routing:
        - If off_topic: reject_task -> END
        - If set_config: handle_config -> END
-       - If make_chart + has_file: call_data_tool -> generate_chart -> END
-       - If make_chart + no file: extract_data -> generate_chart -> END
+       - If make_chart + has_file: call_data_tool -> resolve_ambiguity -> ...
+       - If make_chart + no file: extract_data -> resolve_ambiguity -> ...
     3. handle_config: Handles user preference changes (default style/format)
     4. call_data_tool: Parses Excel file and extracts data
     5. extract_data: Extracts structured data from natural language
-    6. generate_chart: Creates chart file using matplotlib
+    6. resolve_ambiguity: Checks for missing parameters and applies defaults
+    7. Conditional routing after resolve_ambiguity:
+       - If missing params + conversational: ask_clarification -> END (return to REPL)
+       - If all params present: generate_chart -> END
+    8. ask_clarification: Generates clarifying questions for missing parameters
+    9. generate_chart: Creates chart file using matplotlib
 
     Returns:
         Compiled LangGraph workflow
@@ -706,9 +923,11 @@ def create_graph() -> Any:
     # Add nodes
     workflow.add_node("parse_intent", parse_intent)
     workflow.add_node("reject_task", reject_task)
-    workflow.add_node("handle_config", handle_config)  # NEW: Config management
+    workflow.add_node("handle_config", handle_config)
     workflow.add_node("call_data_tool", call_data_tool)
     workflow.add_node("extract_data", extract_data)
+    workflow.add_node("resolve_ambiguity", resolve_ambiguity)  # NEW: Ambiguity resolution
+    workflow.add_node("ask_clarification", ask_clarification)  # NEW: Ask questions
     workflow.add_node("generate_chart", generate_chart_tool)
 
     # Set entry point
@@ -720,19 +939,30 @@ def create_graph() -> Any:
         route_after_intent,
         {
             "reject_task": "reject_task",
-            "handle_config": "handle_config",  # NEW: Route for config changes
+            "handle_config": "handle_config",
             "call_data_tool": "call_data_tool",
             "extract_data": "extract_data",
         },
     )
 
-    # Add edges for chart generation flow
-    workflow.add_edge("call_data_tool", "generate_chart")
-    workflow.add_edge("extract_data", "generate_chart")
+    # Add edges for data extraction -> ambiguity resolution
+    workflow.add_edge("call_data_tool", "resolve_ambiguity")  # NEW
+    workflow.add_edge("extract_data", "resolve_ambiguity")     # NEW
+
+    # Add conditional routing after resolve_ambiguity
+    workflow.add_conditional_edges(
+        "resolve_ambiguity",
+        route_after_resolve,
+        {
+            "ask_clarification": "ask_clarification",  # NEW
+            "generate_chart": "generate_chart",
+        },
+    )
 
     # Add terminal edges
     workflow.add_edge("reject_task", END)
-    workflow.add_edge("handle_config", END)  # NEW: Terminal edge for config changes
+    workflow.add_edge("handle_config", END)
+    workflow.add_edge("ask_clarification", END)  # NEW: Returns to REPL for user response
     workflow.add_edge("generate_chart", END)
 
     # Compile and return

@@ -1,10 +1,10 @@
 ---
 id: task-6
 title: 'Story 6: Persistent Memory/Config'
-status: In Progress
+status: Done
 assignee: []
 created_date: '2025-11-06 13:27'
-updated_date: '2025-11-06 21:27'
+updated_date: '2025-11-06 22:10'
 labels:
   - phase-3
   - config

@@ -47,6 +47,7 @@ def run_direct_mode(
         config_change=None,
         input_data=None,
         chart_request=chart_request,
+        missing_params=None,
         final_filepath=None,
     )
 
@@ -85,6 +86,7 @@ def run_conversational_mode() -> None:
         config_change=None,
         input_data=None,
         chart_request={"type": None, "style": None, "format": None},
+        missing_params=None,
         final_filepath=None,
     )
     logger.debug("Initialized session state")
@@ -127,6 +129,7 @@ def run_conversational_mode() -> None:
             config_change=session_state.get("config_change"),
             input_data=session_state.get("input_data"),
             chart_request=session_state.get("chart_request") or {"type": None, "style": None, "format": None},
+            missing_params=session_state.get("missing_params"),
             final_filepath=session_state.get("final_filepath"),
         )
         logger.debug(f"Updated session state with user message (total messages: {len(session_state['messages'])})")

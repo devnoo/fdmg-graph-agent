@@ -15,6 +15,7 @@ class GraphState(TypedDict):
         config_change: Dictionary with config change request (type and value), or None
         input_data: JSON string of extracted data points (e.g., '[{"label": "A", "value": 10}, ...]')
         chart_request: Dictionary with chart parameters (type, style, format)
+        missing_params: List of missing parameters that need clarification (e.g., ["type", "style"])
         final_filepath: Absolute path to the generated chart file
     """
 
@@ -25,4 +26,5 @@ class GraphState(TypedDict):
     config_change: dict | None
     input_data: str | None
     chart_request: dict | None
+    missing_params: list[str] | None
     final_filepath: str | None
