@@ -130,16 +130,17 @@ def reject_task(state: GraphState) -> GraphState:
 
 def extract_data(state: GraphState) -> GraphState:
     """
-    Extract structured data from user's natural language prompt using Gemini.
+    Extract structured data and chart parameters from user's natural language prompt using Gemini.
 
-    This node uses the LLM to parse the user's message and extract label-value
-    pairs in JSON format.
+    This node uses the LLM to parse the user's message and extract:
+    1. Label-value pairs (data)
+    2. Chart parameters (type, style, format) if mentioned
 
     Args:
         state: Current graph state containing user message
 
     Returns:
-        Updated state with input_data field populated with JSON string
+        Updated state with input_data and chart_request fields populated
     """
     import json
 
@@ -148,22 +149,37 @@ def extract_data(state: GraphState) -> GraphState:
     # Get the last user message
     user_message = state["messages"][-1]["content"]
 
-    # Create prompt for data extraction
-    extraction_prompt = """Extract all label-value pairs from the following text.
+    # Create prompt for data and parameter extraction
+    extraction_prompt = """Extract data and chart parameters from the following text.
 
-Return the data as a JSON array with this exact format:
-[{{"label": "label1", "value": number1}}, {{"label": "label2", "value": number2}}, ...]
+Return a JSON object with this exact format:
+{{
+  "data": [{{"label": "label1", "value": number1}}, {{"label": "label2", "value": number2}}, ...],
+  "type": "bar" or "line" or null,
+  "style": "fd" or "bnr" or null,
+  "format": "png" or "svg" or null
+}}
 
-Examples:
-- "A=10, B=20, C=30" -> [{{"label": "A", "value": 10}}, {{"label": "B", "value": 20}}, {{"label": "C", "value": 30}}]
-- "Monday: 4.1, Tuesday: 4.2" -> [{{"label": "Monday", "value": 4.1}}, {{"label": "Tuesday", "value": 4.2}}]
-- "Q1: 120, Q2: 150" -> [{{"label": "Q1", "value": 120}}, {{"label": "Q2", "value": 150}}]
+Data extraction examples:
+- "A=10, B=20, C=30" -> "data": [{{"label": "A", "value": 10}}, {{"label": "B", "value": 20}}, {{"label": "C", "value": 30}}]
+- "Monday: 4.1, Tuesday: 4.2" -> "data": [{{"label": "Monday", "value": 4.1}}, {{"label": "Tuesday", "value": 4.2}}]
 
-IMPORTANT: Return ONLY the JSON array, no other text.
+Parameter extraction examples:
+- "bar chart" or "bar graph" -> "type": "bar"
+- "line chart" or "line graph" -> "type": "line"
+- "FD style" or "FD colors" or "Financial Daily" or "Financieele Dagblad" -> "style": "fd"
+- "BNR style" or "BNR colors" -> "style": "bnr"
+- "PNG format" or "as PNG" or "save as PNG" -> "format": "png"
+- "SVG format" or "as SVG" or "save as SVG" -> "format": "svg"
+
+IMPORTANT:
+- Return ONLY the JSON object, no other text
+- Set parameters to null if not mentioned in the text
+- Always extract the data array
 
 Text to extract from: {text}
 
-JSON array:"""
+JSON object:"""
 
     prompt = extraction_prompt.format(text=user_message)
 
@@ -179,20 +195,57 @@ JSON array:"""
             extracted_json.replace("```json", "").replace("```", "").strip()
         )
 
-    # Validate JSON
+    # Validate and parse JSON
     try:
-        json.loads(extracted_json)  # Validate it's proper JSON
-    except json.JSONDecodeError:
-        # If invalid, create a default structure
-        extracted_json = '[{"label": "unknown", "value": 0}]'
+        parsed = json.loads(extracted_json)
+        data = parsed.get("data", [])
+
+        # If data is empty or invalid, create default
+        if not data:
+            data = [{"label": "unknown", "value": 0}]
+
+        # Convert data back to JSON string
+        input_data = json.dumps(data)
+
+        # Extract parameters (may be None)
+        extracted_type = parsed.get("type")
+        extracted_style = parsed.get("style")
+        extracted_format = parsed.get("format")
+
+    except (json.JSONDecodeError, AttributeError):
+        # If invalid, create default structure
+        input_data = '[{"label": "unknown", "value": 0}]'
+        extracted_type = None
+        extracted_style = None
+        extracted_format = None
+
+    # Get current chart_request or create default
+    chart_request = state.get("chart_request") or {"type": None, "style": None, "format": None}
+
+    # Merge extracted parameters with existing chart_request
+    # Only override if extracted parameter is not None
+    if extracted_type:
+        chart_request["type"] = extracted_type
+    if extracted_style:
+        chart_request["style"] = extracted_style
+    if extracted_format:
+        chart_request["format"] = extracted_format
+
+    # Apply defaults for missing parameters
+    if chart_request["type"] is None:
+        chart_request["type"] = "bar"
+    if chart_request["style"] is None:
+        chart_request["style"] = "fd"
+    if chart_request["format"] is None:
+        chart_request["format"] = "png"
 
     # Update state
     return GraphState(
         messages=state["messages"],
         interaction_mode=state["interaction_mode"],
         intent=state["intent"],
-        input_data=extracted_json,
-        chart_request=state.get("chart_request"),
+        input_data=input_data,
+        chart_request=chart_request,
         final_filepath=state.get("final_filepath"),
     )
 
@@ -244,6 +297,11 @@ def route_after_intent(state: GraphState) -> str:
     """
     Route to appropriate node based on detected intent.
 
+    For make_chart intent:
+    - Always proceed to extract_data node (handles both direct and conversational modes)
+    - Direct mode: extract_data uses pre-set chart_request parameters from CLI flags
+    - Conversational mode: extract_data extracts parameters from natural language
+
     Args:
         state: Current graph state with intent populated
 
@@ -253,12 +311,8 @@ def route_after_intent(state: GraphState) -> str:
     if state["intent"] == "off_topic":
         return "reject_task"
     elif state["intent"] == "make_chart":
-        # Check if chart_request is present (direct mode with flags)
-        if state.get("chart_request"):
-            return "extract_data"
-        else:
-            # No chart parameters, reject for now (Story 4+ will handle this)
-            return "reject_task"
+        # Proceed to extract_data for both direct and conversational modes
+        return "extract_data"
     else:
         return "reject_task"
 

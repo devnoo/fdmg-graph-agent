@@ -116,27 +116,47 @@ def test_graph_execution_off_topic():
 
 
 def test_graph_execution_chart_request():
-    """Test full graph execution with chart request."""
+    """Test full graph execution with chart request (now generates charts with defaults)."""
+    import os
+
     # Mock the LLM
     with patch("graph_agent.agent.get_llm") as mock_get_llm:
         mock_llm = Mock()
-        mock_response = Mock()
-        mock_response.content = "make_chart"
-        mock_llm.invoke.return_value = mock_response
+
+        # First call: parse_intent
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Second call: extract_data with defaults
+        extract_response = Mock()
+        extract_response.content = (
+            '{"data": [{"label": "A", "value": 10}], '
+            '"type": null, "style": null, "format": null}'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
         mock_get_llm.return_value = mock_llm
 
         graph = agent.create_graph()
         initial_state = GraphState(
-            messages=[{"role": "user", "content": "create a bar chart"}],
-            interaction_mode="direct",
+            messages=[{"role": "user", "content": "create a bar chart with A=10"}],
+            interaction_mode="conversational",
             intent="unknown",
+            input_data=None,
+            chart_request={"type": None, "style": None, "format": None},
+            final_filepath=None,
         )
 
         result = graph.invoke(initial_state)
 
         assert result["intent"] == "make_chart"
-        assert len(result["messages"]) == 2
-        assert "not yet implemented" in result["messages"][1]["content"]
+        # Now generates actual charts, so check for success message
+        assert "Chart saved:" in result["messages"][-1]["content"]
+        assert result["final_filepath"] is not None
+
+        # Cleanup
+        if result.get("final_filepath") and os.path.exists(result["final_filepath"]):
+            os.remove(result["final_filepath"])
 
 
 def test_get_llm_requires_api_key():
@@ -157,7 +177,7 @@ def test_get_llm_with_api_key():
 
 
 def test_extract_data_node():
-    """Test extract_data node extracts JSON data from text."""
+    """Test extract_data node extracts JSON data from text in direct mode."""
     state = GraphState(
         messages=[{"role": "user", "content": "A=10, B=20, C=30"}],
         interaction_mode="direct",
@@ -167,12 +187,13 @@ def test_extract_data_node():
         final_filepath=None,
     )
 
-    # Mock the LLM to return valid JSON
+    # Mock the LLM to return valid JSON (new format with parameters)
     with patch("graph_agent.agent.get_llm") as mock_get_llm:
         mock_llm = Mock()
         mock_response = Mock()
         mock_response.content = (
-            '[{"label": "A", "value": 10}, {"label": "B", "value": 20}]'
+            '{"data": [{"label": "A", "value": 10}, {"label": "B", "value": 20}], '
+            '"type": null, "style": null, "format": null}'
         )
         mock_llm.invoke.return_value = mock_response
         mock_get_llm.return_value = mock_llm
@@ -182,6 +203,10 @@ def test_extract_data_node():
     assert result["input_data"] is not None
     assert "A" in result["input_data"]
     assert "10" in result["input_data"]
+    # Parameters should keep original values from direct mode
+    assert result["chart_request"]["type"] == "bar"
+    assert result["chart_request"]["style"] == "fd"
+    assert result["chart_request"]["format"] == "png"
 
 
 def test_extract_data_handles_invalid_json():
@@ -268,10 +293,10 @@ def test_route_after_intent_make_chart_with_request():
 
 
 def test_route_after_intent_make_chart_without_request():
-    """Test route_after_intent routes chart request without parameters to reject_task."""
+    """Test route_after_intent routes chart request to extract_data (handles conversational mode)."""
     state = GraphState(
         messages=[{"role": "user", "content": "test"}],
-        interaction_mode="direct",
+        interaction_mode="conversational",
         intent="make_chart",
         input_data=None,
         chart_request=None,
@@ -279,11 +304,12 @@ def test_route_after_intent_make_chart_without_request():
     )
 
     result = agent.route_after_intent(state)
-    assert result == "reject_task"
+    # Now routes to extract_data for both modes (extract_data handles parameter extraction)
+    assert result == "extract_data"
 
 
 def test_full_chart_generation_flow():
-    """Test full chart generation flow from start to finish."""
+    """Test full chart generation flow from start to finish (direct mode)."""
     import json
     import os
 
@@ -295,10 +321,11 @@ def test_full_chart_generation_flow():
         intent_response = Mock()
         intent_response.content = "make_chart"
 
-        # Second call for extract_data
+        # Second call for extract_data (new format with parameters)
         extract_response = Mock()
-        extract_response.content = json.dumps(
-            [{"label": "A", "value": 10}, {"label": "B", "value": 20}]
+        extract_response.content = (
+            '{"data": [{"label": "A", "value": 10}, {"label": "B", "value": 20}], '
+            '"type": null, "style": null, "format": null}'
         )
 
         mock_llm.invoke.side_effect = [intent_response, extract_response]
@@ -324,6 +351,165 @@ def test_full_chart_generation_flow():
 
         # Verify chart file was generated
         assert result["final_filepath"] is not None
+        assert os.path.exists(result["final_filepath"])
+
+        # Verify success message
+        assert "Chart saved:" in result["messages"][-1]["content"]
+
+        # Cleanup
+        if os.path.exists(result["final_filepath"]):
+            os.remove(result["final_filepath"])
+
+
+def test_extract_data_with_all_parameters_from_nl():
+    """Test extract_data extracts all parameters from natural language (conversational mode)."""
+    state = GraphState(
+        messages=[
+            {"role": "user", "content": "create a line chart with A=10, B=20. Use BNR style, SVG format."}
+        ],
+        interaction_mode="conversational",
+        intent="make_chart",
+        input_data=None,
+        chart_request={"type": None, "style": None, "format": None},
+        final_filepath=None,
+    )
+
+    # Mock LLM to return full extraction
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = (
+            '{"data": [{"label": "A", "value": 10}, {"label": "B", "value": 20}], '
+            '"type": "line", "style": "bnr", "format": "svg"}'
+        )
+        mock_llm.invoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm
+
+        result = agent.extract_data(state)
+
+    # Verify data extraction
+    assert result["input_data"] is not None
+    assert "A" in result["input_data"]
+
+    # Verify all parameters extracted
+    assert result["chart_request"]["type"] == "line"
+    assert result["chart_request"]["style"] == "bnr"
+    assert result["chart_request"]["format"] == "svg"
+
+
+def test_extract_data_with_partial_parameters_from_nl():
+    """Test extract_data with some parameters specified, others default."""
+    state = GraphState(
+        messages=[
+            {"role": "user", "content": "bar chart with X=5, Y=10. FD style."}
+        ],
+        interaction_mode="conversational",
+        intent="make_chart",
+        input_data=None,
+        chart_request={"type": None, "style": None, "format": None},
+        final_filepath=None,
+    )
+
+    # Mock LLM to return partial extraction (no format specified)
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = (
+            '{"data": [{"label": "X", "value": 5}, {"label": "Y", "value": 10}], '
+            '"type": "bar", "style": "fd", "format": null}'
+        )
+        mock_llm.invoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm
+
+        result = agent.extract_data(state)
+
+    # Verify extracted parameters
+    assert result["chart_request"]["type"] == "bar"
+    assert result["chart_request"]["style"] == "fd"
+    # Verify default applied for missing format
+    assert result["chart_request"]["format"] == "png"
+
+
+def test_extract_data_with_no_parameters_from_nl():
+    """Test extract_data applies defaults when no parameters specified."""
+    state = GraphState(
+        messages=[
+            {"role": "user", "content": "make a chart with Q1=100, Q2=200"}
+        ],
+        interaction_mode="conversational",
+        intent="make_chart",
+        input_data=None,
+        chart_request={"type": None, "style": None, "format": None},
+        final_filepath=None,
+    )
+
+    # Mock LLM to return no parameters (all null)
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+        mock_response = Mock()
+        mock_response.content = (
+            '{"data": [{"label": "Q1", "value": 100}, {"label": "Q2", "value": 200}], '
+            '"type": null, "style": null, "format": null}'
+        )
+        mock_llm.invoke.return_value = mock_response
+        mock_get_llm.return_value = mock_llm
+
+        result = agent.extract_data(state)
+
+    # Verify all defaults applied
+    assert result["chart_request"]["type"] == "bar"
+    assert result["chart_request"]["style"] == "fd"
+    assert result["chart_request"]["format"] == "png"
+
+
+def test_conversational_mode_full_flow():
+    """Test full conversational mode flow with parameter extraction."""
+    import json
+    import os
+
+    # Mock LLM responses
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        # First call: parse_intent
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Second call: extract_data with parameters
+        extract_response = Mock()
+        extract_response.content = (
+            '{"data": [{"label": "A", "value": 10}, {"label": "B", "value": 20}], '
+            '"type": "line", "style": "bnr", "format": "svg"}'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        graph = agent.create_graph()
+        initial_state = GraphState(
+            messages=[
+                {"role": "user", "content": "line chart: A=10, B=20. BNR style, SVG."}
+            ],
+            interaction_mode="conversational",
+            intent="unknown",
+            input_data=None,
+            chart_request={"type": None, "style": None, "format": None},
+            final_filepath=None,
+        )
+
+        result = graph.invoke(initial_state)
+
+        # Verify intent detected
+        assert result["intent"] == "make_chart"
+
+        # Verify parameters extracted from natural language
+        assert result["chart_request"]["type"] == "line"
+        assert result["chart_request"]["style"] == "bnr"
+        assert result["chart_request"]["format"] == "svg"
+
+        # Verify chart generated
+        assert result["final_filepath"] is not None
+        assert result["final_filepath"].endswith(".svg")
         assert os.path.exists(result["final_filepath"])
 
         # Verify success message

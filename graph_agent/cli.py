@@ -49,6 +49,7 @@ def run_conversational_mode() -> None:
     Execute the agent in conversational mode (REPL).
 
     Starts a read-eval-print loop where users can have multiple interactions.
+    Session state is maintained across turns within a single session.
     Exits when user types 'exit' or 'quit'.
     """
     graph = create_graph()
@@ -58,8 +59,15 @@ def run_conversational_mode() -> None:
     print("Type 'exit' or 'quit' to leave.")
     print()
 
-    # Initialize conversation state
-    messages = []
+    # Initialize session state ONCE at the start
+    session_state = GraphState(
+        messages=[],
+        interaction_mode="conversational",
+        intent="unknown",
+        input_data=None,
+        chart_request={"type": None, "style": None, "format": None},
+        final_filepath=None,
+    )
 
     while True:
         # Get user input
@@ -78,27 +86,26 @@ def run_conversational_mode() -> None:
         if not user_input:
             continue
 
-        # Add user message
-        messages.append({"role": "user", "content": user_input})
+        # Append user message to session state
+        updated_messages = session_state["messages"] + [
+            {"role": "user", "content": user_input}
+        ]
 
-        # Create state for this turn
-        current_state = GraphState(
-            messages=messages.copy(),
-            interaction_mode="conversational",
-            intent="unknown",
-            input_data=None,
-            chart_request=None,
-            final_filepath=None,
+        # Update session state with new user message
+        session_state = GraphState(
+            messages=updated_messages,
+            interaction_mode=session_state["interaction_mode"],
+            intent=session_state.get("intent", "unknown"),
+            input_data=session_state.get("input_data"),
+            chart_request=session_state.get("chart_request") or {"type": None, "style": None, "format": None},
+            final_filepath=session_state.get("final_filepath"),
         )
 
-        # Invoke graph
-        result = graph.invoke(current_state)
+        # Invoke graph with current session state
+        session_state = graph.invoke(session_state)
 
         # Get assistant response
-        assistant_message = result["messages"][-1]["content"]
-
-        # Update messages with assistant response
-        messages.append({"role": "assistant", "content": assistant_message})
+        assistant_message = session_state["messages"][-1]["content"]
 
         # Print assistant response
         print(assistant_message)
