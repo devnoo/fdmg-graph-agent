@@ -185,7 +185,7 @@ def test_extract_data_node():
 
 
 def test_extract_data_handles_invalid_json():
-    """Test extract_data handles invalid JSON response."""
+    """Test extract_data handles invalid JSON response with error message."""
     state = GraphState(
         messages=[{"role": "user", "content": "some text"}],
         interaction_mode="direct",
@@ -193,6 +193,7 @@ def test_extract_data_handles_invalid_json():
         input_data=None,
         chart_request={"type": "bar", "style": "fd", "format": "png"},
         final_filepath=None,
+        error_message=None,
     )
 
     # Mock the LLM to return invalid JSON
@@ -205,9 +206,13 @@ def test_extract_data_handles_invalid_json():
 
         result = agent.extract_data(state)
 
-    # Should provide a default fallback
-    assert result["input_data"] is not None
-    assert "unknown" in result["input_data"]
+    # Should set error_message and input_data should be None
+    assert result["input_data"] is None
+    assert result["error_message"] is not None
+    assert (
+        "parse" in result["error_message"].lower()
+        or "json" in result["error_message"].lower()
+    )
 
 
 def test_generate_chart_tool_node():
@@ -332,3 +337,192 @@ def test_full_chart_generation_flow():
         # Cleanup
         if os.path.exists(result["final_filepath"]):
             os.remove(result["final_filepath"])
+
+
+# ============================================================================
+# DATA VALIDATION UNIT TESTS (Phase 2)
+# ============================================================================
+
+
+def test_validate_extracted_data_valid_json_array():
+    """Test validation accepts valid JSON array with proper structure."""
+    import json
+
+    valid_data = json.dumps([{"label": "A", "value": 10}, {"label": "B", "value": 20}])
+
+    # This function should not exist yet - will fail until implemented
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(valid_data)
+    assert error is None
+
+
+def test_validate_extracted_data_rejects_empty_array():
+    """Test validation rejects empty JSON array."""
+    import json
+
+    empty_data = json.dumps([])
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(empty_data)
+    assert error is not None
+    assert "data" in error.lower()
+
+
+def test_validate_extracted_data_rejects_insufficient_data():
+    """Test validation requires at least 2 data points."""
+    import json
+
+    single_point = json.dumps([{"label": "A", "value": 10}])
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(single_point)
+    assert error is not None
+    assert "at least 2" in error.lower() or "insufficient" in error.lower()
+
+
+def test_validate_extracted_data_rejects_all_zero_values():
+    """Test validation rejects data where all values are zero."""
+    import json
+
+    zero_data = json.dumps([{"label": "A", "value": 0}, {"label": "B", "value": 0}])
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(zero_data)
+    assert error is not None
+    assert "zero" in error.lower() or "meaningful" in error.lower()
+
+
+def test_validate_extracted_data_rejects_nan_values():
+    """Test validation rejects NaN values."""
+    import json
+
+    nan_data = json.dumps([{"label": "A", "value": None}, {"label": "B", "value": 20}])
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(nan_data)
+    assert error is not None
+    assert "invalid" in error.lower() or "null" in error.lower()
+
+
+def test_validate_extracted_data_rejects_empty_labels():
+    """Test validation rejects empty label strings."""
+    import json
+
+    empty_label = json.dumps([{"label": "", "value": 10}, {"label": "B", "value": 20}])
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(empty_label)
+    assert error is not None
+    assert "label" in error.lower() and "empty" in error.lower()
+
+
+def test_validate_extracted_data_rejects_whitespace_labels():
+    """Test validation rejects whitespace-only labels."""
+    import json
+
+    whitespace_label = json.dumps(
+        [{"label": "   ", "value": 10}, {"label": "B", "value": 20}]
+    )
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(whitespace_label)
+    assert error is not None
+    assert "label" in error.lower()
+
+
+def test_validate_extracted_data_rejects_missing_label_field():
+    """Test validation rejects objects missing 'label' field."""
+    import json
+
+    missing_label = json.dumps([{"value": 10}, {"label": "B", "value": 20}])
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(missing_label)
+    assert error is not None
+    assert "label" in error.lower()
+
+
+def test_validate_extracted_data_rejects_missing_value_field():
+    """Test validation rejects objects missing 'value' field."""
+    import json
+
+    missing_value = json.dumps([{"label": "A"}, {"label": "B", "value": 20}])
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(missing_value)
+    assert error is not None
+    assert "value" in error.lower()
+
+
+def test_validate_extracted_data_rejects_non_numeric_values():
+    """Test validation rejects non-numeric value types."""
+    import json
+
+    string_value = json.dumps(
+        [{"label": "A", "value": "ten"}, {"label": "B", "value": 20}]
+    )
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(string_value)
+    assert error is not None
+    assert "number" in error.lower() or "numeric" in error.lower()
+
+
+def test_validate_extracted_data_rejects_invalid_json():
+    """Test validation rejects malformed JSON."""
+    invalid_json = "This is not JSON"
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(invalid_json)
+    assert error is not None
+    assert "json" in error.lower() or "parse" in error.lower()
+
+
+def test_validate_extracted_data_rejects_json_object():
+    """Test validation rejects JSON object instead of array."""
+    json_object = '{"label": "A", "value": 10}'
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(json_object)
+    assert error is not None
+    assert "array" in error.lower()
+
+
+def test_validate_extracted_data_accepts_negative_values():
+    """Test validation accepts negative values (for profit/loss charts)."""
+    import json
+
+    negative_data = json.dumps(
+        [{"label": "Profit", "value": 100}, {"label": "Loss", "value": -50}]
+    )
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(negative_data)
+    assert error is None
+
+
+def test_validate_extracted_data_accepts_float_values():
+    """Test validation accepts float values."""
+    import json
+
+    float_data = json.dumps(
+        [{"label": "Mon", "value": 4.5}, {"label": "Tue", "value": 3.2}]
+    )
+
+    from graph_agent.agent import validate_extracted_data
+
+    error = validate_extracted_data(float_data)
+    assert error is None

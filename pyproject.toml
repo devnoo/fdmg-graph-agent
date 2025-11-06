@@ -19,3 +19,10 @@ graph-agent = "graph_agent.cli:main"
 [tool.setuptools.packages.find]
 include = ["graph_agent*"]
 exclude = ["backlog*", "tests*"]
+
+[dependency-groups]
+dev = [
+    "black>=25.9.0",
+    "flake8>=7.3.0",
+    "pytest>=8.4.2",
+]

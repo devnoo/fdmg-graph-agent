@@ -7,7 +7,7 @@ from graph_agent.state import GraphState
 
 def run_direct_mode(
     prompt: str, style: str = "fd", format: str = "png", chart_type: str = "bar"
-) -> None:
+) -> int:
     """
     Execute the agent in direct mode with a single prompt.
 
@@ -16,6 +16,9 @@ def run_direct_mode(
         style: Brand style ('fd' or 'bnr'), defaults to 'fd'
         format: Output format ('png' or 'svg'), defaults to 'png'
         chart_type: Chart type ('bar' or 'line'), defaults to 'bar'
+
+    Returns:
+        Exit code: 0 for success, 1 for error
     """
     graph = create_graph()
 
@@ -30,6 +33,7 @@ def run_direct_mode(
         input_data=None,
         chart_request=chart_request,
         final_filepath=None,
+        error_message=None,
     )
 
     # Invoke graph
@@ -38,6 +42,12 @@ def run_direct_mode(
     # Print assistant response
     assistant_message = result["messages"][-1]["content"]
     print(assistant_message)
+
+    # Check if there was an error
+    if result.get("error_message") is not None:
+        return 1
+    else:
+        return 0
 
 
 def run_conversational_mode() -> None:
@@ -85,6 +95,7 @@ def run_conversational_mode() -> None:
             input_data=None,
             chart_request=None,
             final_filepath=None,
+            error_message=None,
         )
 
         # Invoke graph
@@ -137,10 +148,16 @@ def main(
         graph-agent "A=10, B=20, C=30" --style fd --format png --type bar
         graph-agent
     """
+    import sys
+
     try:
         if prompt:
             # Direct mode
-            run_direct_mode(prompt, style=style, format=format, chart_type=type)
+            exit_code = run_direct_mode(
+                prompt, style=style, format=format, chart_type=type
+            )
+            if exit_code != 0:
+                sys.exit(exit_code)
         else:
             # Conversational mode
             run_conversational_mode()

@@ -14,6 +14,7 @@ class GraphState(TypedDict):
         input_data: JSON string of extracted data points (e.g., '[{"label": "A", "value": 10}, ...]')
         chart_request: Dictionary with chart parameters (type, style, format)
         final_filepath: Absolute path to the generated chart file
+        error_message: Error message if data extraction or validation fails (None if no error)
     """
 
     messages: list[dict]
@@ -22,3 +23,4 @@ class GraphState(TypedDict):
     input_data: str | None
     chart_request: dict | None
     final_filepath: str | None
+    error_message: str | None

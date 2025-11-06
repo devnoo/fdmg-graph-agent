@@ -7,6 +7,89 @@ from langgraph.graph import StateGraph, END
 from graph_agent.state import GraphState
 
 
+def validate_extracted_data(json_string: str) -> str | None:
+    """
+    Validate extracted JSON data for chart generation.
+
+    Performs comprehensive validation including:
+    - Valid JSON parsing
+    - Correct structure (array of objects)
+    - Required fields (label, value)
+    - Data quality (sufficient points, non-zero values, valid numbers)
+
+    Args:
+        json_string: JSON string containing extracted data
+
+    Returns:
+        Error message string if validation fails, None if validation passes
+    """
+    import json
+    import math
+
+    # Validate JSON parsing
+    try:
+        data = json.loads(json_string)
+    except json.JSONDecodeError:
+        return "Failed to parse data. Please provide your request in a clear format with label-value pairs."
+
+    # Validate data is an array
+    if not isinstance(data, list):
+        return "Data must be in array format. Please provide multiple data points."
+
+    # Validate not empty
+    if len(data) == 0:
+        return "No data found. Please provide at least 2 data points for a meaningful chart."
+
+    # Validate at least 2 data points
+    if len(data) < 2:
+        return "Insufficient data. Please provide at least 2 data points to create a meaningful chart."
+
+    # Validate each data point
+    for i, item in enumerate(data):
+        # Check if item is a dict
+        if not isinstance(item, dict):
+            return f"Invalid data format at position {i+1}. Each data point must have a label and value."
+
+        # Check for required fields
+        if "label" not in item:
+            return (
+                f"Missing label at position {i+1}. Each data point must have a label."
+            )
+
+        if "value" not in item:
+            return f"Missing value at position {i+1}. Each data point must have a numeric value."
+
+        # Validate label is not empty
+        label = item["label"]
+        if not isinstance(label, str):
+            return f"Label at position {i+1} must be a string."
+
+        if not label.strip():
+            return f"Empty label at position {i+1}. Each data point must have a non-empty label."
+
+        # Validate value is numeric
+        value = item["value"]
+        if value is None:
+            return (
+                f"Invalid value at position {i+1}. Value cannot be null or undefined."
+            )
+
+        if not isinstance(value, (int, float)):
+            return f"Invalid value at position {i+1}. Value must be a number, got: {type(value).__name__}."
+
+        # Check for NaN or Infinity
+        if math.isnan(value) or math.isinf(value):
+            return f"Invalid value at position {i+1}. Value cannot be NaN or Infinity."
+
+    # Check if all values are zero
+    all_zero = all(item["value"] == 0 for item in data)
+    if all_zero:
+        return "All values are zero. Please provide meaningful data with at least one non-zero value."
+
+    # Validation passed
+    return None
+
+
 def get_llm() -> ChatGoogleGenerativeAI:
     """
     Initialize and return the Gemini LLM.
@@ -79,23 +162,28 @@ Your response (one word only):"""
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
 
 
 def reject_task(state: GraphState) -> GraphState:
     """
-    Generate appropriate response based on detected intent.
+    Generate appropriate response based on detected intent or error.
 
+    For data validation errors: Returns error_message
     For off-topic requests: Returns polite rejection message
-    For chart requests: Returns 'not yet implemented' message
+    For chart requests without parameters: Returns 'not yet implemented' message
 
     Args:
-        state: Current graph state with intent populated
+        state: Current graph state with intent and error_message populated
 
     Returns:
         Updated state with assistant response added to messages
     """
-    if state["intent"] == "off_topic":
+    # Check if there's an error message from validation
+    if state.get("error_message"):
+        response = f"Error: {state['error_message']}"
+    elif state["intent"] == "off_topic":
         response = "I can only help you create charts. Please ask me to make a bar or line chart."
     elif state["intent"] == "make_chart":
         response = "Chart generation is not yet implemented. Check back soon!"
@@ -113,6 +201,7 @@ def reject_task(state: GraphState) -> GraphState:
         input_data=state.get("input_data"),
         chart_request=state.get("chart_request"),
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
 
 
@@ -121,16 +210,14 @@ def extract_data(state: GraphState) -> GraphState:
     Extract structured data from user's natural language prompt using Gemini.
 
     This node uses the LLM to parse the user's message and extract label-value
-    pairs in JSON format.
+    pairs in JSON format, then validates the extracted data.
 
     Args:
         state: Current graph state containing user message
 
     Returns:
-        Updated state with input_data field populated with JSON string
+        Updated state with input_data and error_message fields populated
     """
-    import json
-
     llm = get_llm()
 
     # Get the last user message
@@ -159,21 +246,18 @@ JSON array:"""
     response = llm.invoke(prompt)
     extracted_json = response.content.strip()
 
-    # Validate JSON
-    try:
-        json.loads(extracted_json)  # Validate it's proper JSON
-    except json.JSONDecodeError:
-        # If invalid, create a default structure
-        extracted_json = '[{"label": "unknown", "value": 0}]'
+    # Validate extracted data
+    error_message = validate_extracted_data(extracted_json)
 
     # Update state
     return GraphState(
         messages=state["messages"],
         interaction_mode=state["interaction_mode"],
         intent=state["intent"],
-        input_data=extracted_json,
+        input_data=extracted_json if error_message is None else None,
         chart_request=state.get("chart_request"),
         final_filepath=state.get("final_filepath"),
+        error_message=error_message,
     )
 
 
@@ -217,6 +301,7 @@ def generate_chart_tool(state: GraphState) -> GraphState:
         input_data=state["input_data"],
         chart_request=state["chart_request"],
         final_filepath=filepath,
+        error_message=state.get("error_message"),
     )
 
 
@@ -243,17 +328,39 @@ def route_after_intent(state: GraphState) -> str:
         return "reject_task"
 
 
+def route_after_extraction(state: GraphState) -> str:
+    """
+    Route after data extraction based on validation results.
+
+    If error_message is present, route to reject_task to display error.
+    Otherwise, proceed to generate_chart.
+
+    Args:
+        state: Current graph state with error_message populated
+
+    Returns:
+        Name of next node to execute
+    """
+    if state.get("error_message"):
+        return "reject_task"
+    else:
+        return "generate_chart"
+
+
 def create_graph() -> Any:
     """
     Create and compile the LangGraph workflow.
 
     The workflow consists of:
     1. parse_intent: Analyzes user request and determines intent
-    2. Conditional routing:
+    2. Conditional routing after intent:
        - If off_topic: reject_task -> END
-       - If make_chart: extract_data -> generate_chart -> END
-    3. extract_data: Extracts structured data from natural language
-    4. generate_chart: Creates chart file using matplotlib
+       - If make_chart: extract_data -> validate -> route
+    3. extract_data: Extracts and validates structured data
+    4. Conditional routing after extraction:
+       - If error: reject_task -> END
+       - If valid: generate_chart -> END
+    5. generate_chart: Creates chart file using matplotlib
 
     Returns:
         Compiled LangGraph workflow
@@ -276,8 +383,12 @@ def create_graph() -> Any:
         {"reject_task": "reject_task", "extract_data": "extract_data"},
     )
 
-    # Add edges for chart generation flow
-    workflow.add_edge("extract_data", "generate_chart")
+    # Add conditional routing after extract_data (check for validation errors)
+    workflow.add_conditional_edges(
+        "extract_data",
+        route_after_extraction,
+        {"reject_task": "reject_task", "generate_chart": "generate_chart"},
+    )
 
     # Add terminal edges
     workflow.add_edge("reject_task", END)

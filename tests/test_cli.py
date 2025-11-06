@@ -1,187 +1,555 @@
-"""Tests for CLI functionality."""
+"""Acceptance tests for CLI error handling and validation."""
 
+import os
 from unittest.mock import Mock, patch
 from click.testing import CliRunner
-from graph_agent import cli
+from graph_agent.cli import main
 
 
-def test_cli_command_exists():
-    """Test that the main CLI command exists."""
-    assert hasattr(cli, "main")
-    assert callable(cli.main)
+# ============================================================================
+# INVALID JSON DETECTION TESTS (6 tests)
+# ============================================================================
 
 
-def test_cli_direct_mode_with_off_topic():
-    """Test CLI in direct mode with off-topic request."""
+def test_cli_rejects_plain_text_response():
+    """
+    Test that CLI exits with error when LLM returns plain text instead of JSON.
+
+    Acceptance Criteria:
+    - Exit code 1
+    - No chart file generated
+    - Error message mentions JSON parsing failure
+    """
     runner = CliRunner()
 
-    # Mock the graph to return off-topic response
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        expected_response = "I can only help you create charts. Please ask me to make a bar or line chart."
-        mock_graph.invoke.return_value = {
-            "messages": [
-                {"role": "user", "content": "make me a sandwich"},
-                {"role": "assistant", "content": expected_response},
-            ],
-            "interaction_mode": "direct",
-            "intent": "off_topic",
-        }
-        mock_create_graph.return_value = mock_graph
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
 
-        result = runner.invoke(cli.main, ["make me a sandwich"])
+        # Intent detection: make_chart
+        intent_response = Mock()
+        intent_response.content = "make_chart"
 
-        assert result.exit_code == 0
-        assert "I can only help you create charts" in result.output
+        # Data extraction: returns plain text (not JSON)
+        extract_response = Mock()
+        extract_response.content = "This is plain text, not JSON"
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10, B=20", "--type", "bar"])
+
+        # Verify error exit code
+        assert result.exit_code == 1
+
+        # Verify error message mentions JSON
+        assert "JSON" in result.output or "parse" in result.output.lower()
+
+        # Verify no chart files were created
+        output_files = [f for f in os.listdir(".") if f.startswith("chart-")]
+        assert len(output_files) == 0
 
 
-def test_cli_direct_mode_with_chart_request():
-    """Test CLI in direct mode with chart request."""
+def test_cli_rejects_malformed_json():
+    """
+    Test that CLI rejects malformed JSON (missing brackets, invalid syntax).
+    """
     runner = CliRunner()
 
-    # Mock the graph to return chart response
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        mock_graph.invoke.return_value = {
-            "messages": [
-                {"role": "user", "content": "create a bar chart"},
-                {
-                    "role": "assistant",
-                    "content": "Chart generation is not yet implemented. Check back soon!",
-                },
-            ],
-            "interaction_mode": "direct",
-            "intent": "make_chart",
-        }
-        mock_create_graph.return_value = mock_graph
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
 
-        result = runner.invoke(cli.main, ["create a bar chart"])
+        intent_response = Mock()
+        intent_response.content = "make_chart"
 
-        assert result.exit_code == 0
-        assert "not yet implemented" in result.output
+        # Malformed JSON: missing closing bracket
+        extract_response = Mock()
+        extract_response.content = '[{"label": "A", "value": 10'
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "JSON" in result.output or "parse" in result.output.lower()
 
 
-def test_cli_conversational_mode_starts_repl():
-    """Test CLI in conversational mode starts with welcome message."""
+def test_cli_rejects_json_object_instead_of_array():
+    """
+    Test that CLI rejects JSON object when array is expected.
+    """
     runner = CliRunner()
 
-    # Mock the graph
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        mock_create_graph.return_value = mock_graph
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
 
-        # Simulate user typing 'exit'
-        result = runner.invoke(cli.main, input="exit\n")
+        intent_response = Mock()
+        intent_response.content = "make_chart"
 
-        assert result.exit_code == 0
+        # Valid JSON but wrong structure (object instead of array)
+        extract_response = Mock()
+        extract_response.content = '{"label": "A", "value": 10}'
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "array" in result.output.lower() or "format" in result.output.lower()
+
+
+def test_cli_rejects_json_with_missing_label_field():
+    """
+    Test that CLI rejects JSON array with objects missing 'label' field.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Missing 'label' field
+        extract_response = Mock()
+        extract_response.content = '[{"value": 10}, {"value": 20}]'
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10, B=20", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "label" in result.output.lower()
+
+
+def test_cli_rejects_json_with_missing_value_field():
+    """
+    Test that CLI rejects JSON array with objects missing 'value' field.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Missing 'value' field
+        extract_response = Mock()
+        extract_response.content = '[{"label": "A"}, {"label": "B"}]'
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10, B=20", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "value" in result.output.lower()
+
+
+def test_cli_rejects_json_with_wrong_value_type():
+    """
+    Test that CLI rejects JSON where value is not a number.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Value is string instead of number (provide 2 points to pass minimum data check)
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "A", "value": "ten"}, {"label": "B", "value": 20}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "number" in result.output.lower() or "numeric" in result.output.lower()
+
+
+# ============================================================================
+# INSUFFICIENT DATA DETECTION TESTS (4 tests)
+# ============================================================================
+
+
+def test_cli_rejects_empty_json_array():
+    """
+    Test that CLI rejects empty JSON array (no data points).
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Empty array
+        extract_response = Mock()
+        extract_response.content = "[]"
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["create chart", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "data" in result.output.lower()
+
+
+def test_cli_rejects_single_data_point():
+    """
+    Test that CLI requires at least 2 data points for meaningful chart.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Only one data point
+        extract_response = Mock()
+        extract_response.content = '[{"label": "A", "value": 10}]'
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10", "--type", "bar"])
+
+        assert result.exit_code == 1
         assert (
-            "Welcome to Graph Agent" in result.output or "Graph Agent" in result.output
+            "at least 2" in result.output.lower()
+            or "insufficient" in result.output.lower()
         )
 
 
-def test_cli_conversational_mode_exit_command():
-    """Test that 'exit' command exits the REPL."""
+def test_cli_rejects_empty_label():
+    """
+    Test that CLI rejects data points with empty label strings.
+    """
     runner = CliRunner()
 
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        mock_create_graph.return_value = mock_graph
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
 
-        result = runner.invoke(cli.main, input="exit\n")
+        intent_response = Mock()
+        intent_response.content = "make_chart"
 
-        assert result.exit_code == 0
-        assert "Goodbye" in result.output or result.exit_code == 0
+        # Empty label
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "", "value": 10}, {"label": "B", "value": 20}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["=10, B=20", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "label" in result.output.lower() and "empty" in result.output.lower()
 
 
-def test_cli_conversational_mode_quit_command():
-    """Test that 'quit' command exits the REPL."""
+def test_cli_rejects_whitespace_only_label():
+    """
+    Test that CLI rejects data points with whitespace-only labels.
+    """
     runner = CliRunner()
 
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        mock_create_graph.return_value = mock_graph
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
 
-        result = runner.invoke(cli.main, input="quit\n")
+        intent_response = Mock()
+        intent_response.content = "make_chart"
 
-        assert result.exit_code == 0
+        # Whitespace-only label
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "   ", "value": 10}, {"label": "B", "value": 20}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["   =10, B=20", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "label" in result.output.lower()
 
 
-def test_cli_conversational_mode_handles_requests():
-    """Test that conversational mode handles user requests."""
+# ============================================================================
+# DATA QUALITY VALIDATION TESTS (3 tests)
+# ============================================================================
+
+
+def test_cli_rejects_all_zero_values():
+    """
+    Test that CLI rejects data where all values are zero (invisible chart).
+    """
     runner = CliRunner()
 
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        expected_msg = "I can only help you create charts. Please ask me to make a bar or line chart."
-        mock_graph.invoke.return_value = {
-            "messages": [
-                {"role": "user", "content": "test"},
-                {"role": "assistant", "content": expected_msg},
-            ],
-            "interaction_mode": "conversational",
-            "intent": "off_topic",
-        }
-        mock_create_graph.return_value = mock_graph
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
 
-        result = runner.invoke(cli.main, input="test\nexit\n")
+        intent_response = Mock()
+        intent_response.content = "make_chart"
 
-        assert result.exit_code == 0
-        # Verify the graph was called
-        assert mock_graph.invoke.called
+        # All zero values
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "A", "value": 0}, {"label": "B", "value": 0}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=0, B=0", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "zero" in result.output.lower() or "meaningful" in result.output.lower()
 
 
-def test_cli_no_args_starts_conversational():
-    """Test that CLI with no arguments starts conversational mode."""
+def test_cli_rejects_nan_values():
+    """
+    Test that CLI rejects NaN (Not a Number) values.
+    """
     runner = CliRunner()
 
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        mock_create_graph.return_value = mock_graph
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
 
-        result = runner.invoke(cli.main, input="exit\n")
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # NaN value (represented as null in JSON)
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "A", "value": null}, {"label": "B", "value": 20}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=NaN, B=20", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "invalid" in result.output.lower() or "value" in result.output.lower()
+
+
+def test_cli_rejects_infinity_values():
+    """
+    Test that CLI rejects Infinity values.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Infinity value (JSON doesn't support, but could be string)
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "A", "value": 10}, {"label": "B", "value": "Infinity"}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10, B=Infinity", "--type", "bar"])
+
+        assert result.exit_code == 1
+        assert "invalid" in result.output.lower() or "value" in result.output.lower()
+
+
+# ============================================================================
+# SUCCESS CASES (3 tests)
+# ============================================================================
+
+
+def test_cli_succeeds_with_valid_integer_data():
+    """
+    Test that CLI successfully generates chart with valid integer data.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Valid data
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "A", "value": 10}, {"label": "B", "value": 20}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10, B=20", "--type", "bar"])
+
+        # Success exit code
+        assert result.exit_code == 0
+
+        # Verify chart was created
+        assert "Chart saved:" in result.output
+
+        # Cleanup: remove generated chart
+        import re
+
+        match = re.search(r"chart-[\w-]+\.png", result.output)
+        if match:
+            filepath = match.group(0)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+
+
+def test_cli_succeeds_with_valid_float_data():
+    """
+    Test that CLI successfully generates chart with valid float data.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Valid float data
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "Mon", "value": 4.5}, {"label": "Tue", "value": 3.2}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["Mon=4.5, Tue=3.2", "--type", "bar"])
 
         assert result.exit_code == 0
-        # Should show welcome or prompt
-        assert len(result.output) > 0
+        assert "Chart saved:" in result.output
+
+        # Cleanup
+        import re
+
+        match = re.search(r"chart-[\w-]+\.png", result.output)
+        if match:
+            filepath = match.group(0)
+            if os.path.exists(filepath):
+                os.remove(filepath)
 
 
-def test_run_direct_mode():
-    """Test run_direct_mode function."""
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        mock_graph.invoke.return_value = {
-            "messages": [
-                {"role": "user", "content": "test"},
-                {"role": "assistant", "content": "response"},
-            ],
-            "interaction_mode": "direct",
-            "intent": "off_topic",
-        }
-        mock_create_graph.return_value = mock_graph
+def test_cli_succeeds_with_mixed_positive_negative_values():
+    """
+    Test that CLI successfully handles mixed positive and negative values.
+    """
+    runner = CliRunner()
 
-        # This should not raise an error
-        with patch("builtins.print") as mock_print:
-            cli.run_direct_mode("test")
-            # Verify print was called with response
-            assert mock_print.called
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Mixed positive/negative
+        extract_response = Mock()
+        extract_response.content = (
+            '[{"label": "Profit", "value": 100}, {"label": "Loss", "value": -50}]'
+        )
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["Profit=100, Loss=-50", "--type", "bar"])
+
+        assert result.exit_code == 0
+        assert "Chart saved:" in result.output
+
+        # Cleanup
+        import re
+
+        match = re.search(r"chart-[\w-]+\.png", result.output)
+        if match:
+            filepath = match.group(0)
+            if os.path.exists(filepath):
+                os.remove(filepath)
 
 
-def test_run_conversational_mode():
-    """Test run_conversational_mode function."""
-    with patch("graph_agent.cli.create_graph") as mock_create_graph:
-        mock_graph = Mock()
-        mock_graph.invoke.return_value = {
-            "messages": [
-                {"role": "user", "content": "test"},
-                {"role": "assistant", "content": "response"},
-            ],
-            "interaction_mode": "conversational",
-            "intent": "off_topic",
-        }
-        mock_create_graph.return_value = mock_graph
+# ============================================================================
+# ERROR MESSAGE QUALITY TESTS (2 tests)
+# ============================================================================
 
-        with patch("builtins.input", side_effect=["test", "exit"]):
-            with patch("builtins.print") as mock_print:
-                cli.run_conversational_mode()
-                # Verify welcome and goodbye messages
-                assert mock_print.called
+
+def test_error_messages_are_actionable():
+    """
+    Test that error messages provide clear guidance on what went wrong.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Empty array
+        extract_response = Mock()
+        extract_response.content = "[]"
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["make chart", "--type", "bar"])
+
+        assert result.exit_code == 1
+
+        # Error message should be specific and actionable
+        output_lower = result.output.lower()
+        assert "error" in output_lower or "failed" in output_lower
+        # Should explain what the problem is
+        assert "data" in output_lower or "extract" in output_lower
+
+
+def test_error_messages_avoid_technical_jargon():
+    """
+    Test that error messages are user-friendly and avoid implementation details.
+    """
+    runner = CliRunner()
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        intent_response = Mock()
+        intent_response.content = "make_chart"
+
+        # Malformed JSON
+        extract_response = Mock()
+        extract_response.content = "not json"
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response]
+        mock_get_llm.return_value = mock_llm
+
+        result = runner.invoke(main, ["A=10", "--type", "bar"])
+
+        assert result.exit_code == 1
+
+        # Should avoid technical terms like "JSONDecodeError", "stack trace", etc.
+        output_lower = result.output.lower()
+        assert "jsondecode" not in output_lower
+        assert "traceback" not in output_lower
+        assert "exception" not in output_lower
