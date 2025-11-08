@@ -3,6 +3,7 @@
 import json
 import os
 import logging
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
@@ -30,6 +31,150 @@ BRAND_COLORS = {
         "background": "#fff",
     },
 }
+
+
+def sanitize_filename(name: str, max_length: int = 20) -> str:
+    """
+    Sanitize a string to be filesystem-safe for use in filenames.
+
+    Applies the following transformations:
+    - Convert to lowercase
+    - Replace spaces and underscores with hyphens
+    - Remove special characters (keep only a-z, 0-9, hyphen)
+    - Remove accents/diacritics
+    - Truncate to max_length characters
+    - Ensure non-empty (return 'chart' if empty)
+
+    Args:
+        name: String to sanitize
+        max_length: Maximum length of output (default: 20)
+
+    Returns:
+        Sanitized filename-safe string
+
+    Examples:
+        >>> sanitize_filename("Café sales")
+        'cafe-sales'
+        >>> sanitize_filename("Q1/Q2 Results")
+        'q1-q2-results'
+        >>> sanitize_filename("Year-over-year growth rate", max_length=20)
+        'year-over-year-gro'
+    """
+    if not name:
+        return "chart"
+
+    # Convert to lowercase
+    result = name.lower()
+
+    # Replace common diacritics
+    replacements = {
+        'à': 'a', 'á': 'a', 'â': 'a', 'ã': 'a', 'ä': 'a', 'å': 'a',
+        'è': 'e', 'é': 'e', 'ê': 'e', 'ë': 'e',
+        'ì': 'i', 'í': 'i', 'î': 'i', 'ï': 'i',
+        'ò': 'o', 'ó': 'o', 'ô': 'o', 'õ': 'o', 'ö': 'o',
+        'ù': 'u', 'ú': 'u', 'û': 'u', 'ü': 'u',
+        'ç': 'c', 'ñ': 'n',
+    }
+    for diacritic, replacement in replacements.items():
+        result = result.replace(diacritic, replacement)
+
+    # Replace spaces, underscores, and slashes with hyphens
+    result = re.sub(r'[\s_/]+', '-', result)
+
+    # Remove all non-alphanumeric characters except hyphens
+    result = re.sub(r'[^a-z0-9-]', '', result)
+
+    # Remove consecutive hyphens
+    result = re.sub(r'-+', '-', result)
+
+    # Remove leading/trailing hyphens
+    result = result.strip('-')
+
+    # Truncate to max length (strip trailing hyphens after truncation)
+    if len(result) > max_length:
+        result = result[:max_length]
+        result = result.rstrip('-')
+
+    # Ensure non-empty
+    if not result:
+        result = "chart"
+
+    logger.debug(f"sanitize_filename: '{name}' -> '{result}'")
+    return result
+
+
+def extract_logical_name(user_prompt: str, llm) -> str:
+    """
+    Extract a 1-2 word logical filename prefix from user prompt using LLM.
+
+    This function uses Gemini to intelligently extract a short, meaningful
+    name from the user's prompt. Works with both Dutch and English.
+
+    Args:
+        user_prompt: The user's original request/prompt
+        llm: LLM instance to use for extraction
+
+    Returns:
+        Sanitized logical name (1-2 words), or 'chart' if extraction fails
+
+    Examples:
+        >>> extract_logical_name("Maak een grafiek van studieschuld data", llm)
+        'studieschuld'
+        >>> extract_logical_name("Q1=100, Q2=150, Q3=200", llm)
+        'quarterly'
+        >>> extract_logical_name("Create bar chart for monthly sales", llm)
+        'sales'
+    """
+    logger.debug(f"extract_logical_name: Extracting from: {user_prompt[:100]}...")
+
+    extraction_prompt = f"""Extract a 1-2 word filename prefix from the following text.
+The prefix should summarize the main topic or subject of the data/chart.
+
+Rules:
+- Return ONLY the prefix, no explanation or extra words
+- Use 1-2 words maximum
+- Use lowercase
+- Prefer nouns over verbs
+- If the text mentions specific data (like "studieschuld", "sales", "revenue"), use that
+- If it's generic data like "A=10, B=20", use "data" or describe the pattern (e.g., "quarterly" for Q1, Q2, Q3)
+
+Examples:
+- "Maak een grafiek van studieschuld data" -> studieschuld
+- "Q1=100, Q2=150, Q3=200, Q4=180" -> quarterly
+- "Amsterdam=500, Rotterdam=400, Utrecht=300" -> cities
+- "Create a bar chart for monthly sales" -> sales
+- "A=10, B=20, C=30" -> data
+
+Text: {user_prompt}
+
+Prefix:"""
+
+    try:
+        response = llm.invoke(extraction_prompt)
+        extracted_name = response.content.strip().lower()
+        logger.debug(f"extract_logical_name: LLM returned: '{extracted_name}'")
+
+        # Clean up the response (remove quotes, periods, etc.)
+        extracted_name = extracted_name.strip('"\'.,!? ')
+
+        # Sanitize the extracted name FIRST (this handles special characters properly)
+        sanitized_name = sanitize_filename(extracted_name)
+
+        # Take only first 2 words after sanitization (split by hyphen)
+        words = sanitized_name.split('-')[:2]
+        sanitized_name = '-'.join(words)
+
+        # If sanitization resulted in empty or very short string, use fallback
+        if not sanitized_name or len(sanitized_name) < 2:
+            logger.warning(f"extract_logical_name: Extracted name too short, using fallback")
+            return "chart"
+
+        logger.info(f"extract_logical_name: Final name: '{sanitized_name}'")
+        return sanitized_name
+
+    except Exception as e:
+        logger.warning(f"extract_logical_name: Failed to extract name: {e}")
+        return "chart"
 
 
 def parse_excel_a1(file_path: str) -> str:

@@ -419,3 +419,172 @@ def test_matplotlib_chart_generator_extension_mismatch_warning():
 
     # Cleanup
     os.remove(filepath)
+
+
+def test_sanitize_filename_basic():
+    """Test basic filename sanitization."""
+    from graph_agent.tools import sanitize_filename
+
+    assert sanitize_filename("Café sales") == "cafe-sales"
+    assert sanitize_filename("Q1/Q2 Results") == "q1-q2-results"
+    assert sanitize_filename("Monthly Revenue") == "monthly-revenue"
+    assert sanitize_filename("Year_over_year growth") == "year-over-year-growt"  # Truncated to 20 chars
+
+
+def test_sanitize_filename_special_characters():
+    """Test sanitization removes special characters."""
+    from graph_agent.tools import sanitize_filename
+
+    assert sanitize_filename("Data (2024)") == "data-2024"
+    assert sanitize_filename("Sales & Marketing") == "sales-marketing"
+    assert sanitize_filename("Q1@Q2#Q3") == "q1q2q3"
+
+
+def test_sanitize_filename_length_truncation():
+    """Test that long names are truncated to max_length."""
+    from graph_agent.tools import sanitize_filename
+
+    result = sanitize_filename("This is a very long filename that should be truncated", max_length=20)
+    assert len(result) <= 20
+    assert result == "this-is-a-very-long"  # 19 chars
+
+    result = sanitize_filename("Year-over-year growth rate analysis", max_length=20)
+    assert len(result) <= 20
+    # "year-over-year-growth-rate-analysis" becomes "year-over-year-gro" after truncation and trimming
+    assert result == "year-over-year-growt"  # 20 chars
+
+
+def test_sanitize_filename_empty_fallback():
+    """Test that empty strings fallback to 'chart'."""
+    from graph_agent.tools import sanitize_filename
+
+    assert sanitize_filename("") == "chart"
+    assert sanitize_filename("   ") == "chart"
+    assert sanitize_filename("@#$%") == "chart"
+
+
+def test_extract_logical_name_dutch():
+    """Test extracting logical name from Dutch prompt."""
+    from unittest.mock import Mock
+    from graph_agent.tools import extract_logical_name
+
+    mock_llm = Mock()
+    mock_response = Mock()
+    mock_response.content = "studieschuld"
+    mock_llm.invoke.return_value = mock_response
+
+    result = extract_logical_name("Maak een grafiek van studieschuld data", mock_llm)
+    assert result == "studieschuld"
+    assert mock_llm.invoke.called
+
+
+def test_extract_logical_name_english():
+    """Test extracting logical name from English prompt."""
+    from unittest.mock import Mock
+    from graph_agent.tools import extract_logical_name
+
+    mock_llm = Mock()
+    mock_response = Mock()
+    mock_response.content = "sales"
+    mock_llm.invoke.return_value = mock_response
+
+    result = extract_logical_name("Create a bar chart for monthly sales", mock_llm)
+    assert result == "sales"
+
+
+def test_extract_logical_name_quarterly_data():
+    """Test extracting logical name from quarterly data pattern."""
+    from unittest.mock import Mock
+    from graph_agent.tools import extract_logical_name
+
+    mock_llm = Mock()
+    mock_response = Mock()
+    mock_response.content = "quarterly"
+    mock_llm.invoke.return_value = mock_response
+
+    result = extract_logical_name("Q1=100, Q2=150, Q3=200, Q4=180", mock_llm)
+    assert result == "quarterly"
+
+
+def test_extract_logical_name_fallback_on_error():
+    """Test fallback to 'chart' when LLM fails."""
+    from unittest.mock import Mock
+    from graph_agent.tools import extract_logical_name
+
+    mock_llm = Mock()
+    mock_llm.invoke.side_effect = Exception("LLM error")
+
+    result = extract_logical_name("Some prompt", mock_llm)
+    assert result == "chart"
+
+
+def test_extract_logical_name_sanitizes_output():
+    """Test that extracted name is sanitized."""
+    from unittest.mock import Mock
+    from graph_agent.tools import extract_logical_name
+
+    mock_llm = Mock()
+    mock_response = Mock()
+    mock_response.content = "Café & Sales"  # LLM returned unsanitized name
+    mock_llm.invoke.return_value = mock_response
+
+    result = extract_logical_name("Some prompt", mock_llm)
+    assert result == "cafe-sales"
+
+
+def test_logical_filename_in_chart_generation():
+    """Test that chart generation uses logical filename format."""
+    import json
+    import os
+    from unittest.mock import patch, Mock
+    from graph_agent.agent import create_graph
+    from graph_agent.state import GraphState
+
+    # Mock LLM responses
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        with patch("graph_agent.tools.extract_logical_name", return_value="test-data"):
+            mock_llm = Mock()
+
+            # First call: parse_intent
+            intent_response = Mock()
+            intent_response.content = '{"intent": "make_chart", "has_file": false, "config_type": null, "config_value": null}'
+
+            # Second call: extract_data
+            extract_response = Mock()
+            extract_response.content = (
+                '{"data": [{"label": "A", "value": 10}, {"label": "B", "value": 20}], '
+                '"type": null, "style": null, "format": null}'
+            )
+
+            mock_llm.invoke.side_effect = [intent_response, extract_response]
+            mock_get_llm.return_value = mock_llm
+
+            graph = create_graph()
+            initial_state = GraphState(
+                messages=[{"role": "user", "content": "Create a chart with A=10, B=20"}],
+                interaction_mode="direct",
+                intent="unknown",
+                has_file=False,
+                config_change=None,
+                input_data=None,
+                chart_request={"type": "bar", "style": "fd", "format": "png"},
+                missing_params=None,
+                output_filename=None,
+                final_filepath=None,
+                error_message=None,
+            )
+
+            result = graph.invoke(initial_state)
+
+            # Verify chart was generated
+            assert result["final_filepath"] is not None
+
+            # Verify filename format: should be test-data-TIMESTAMP.png
+            filename = os.path.basename(result["final_filepath"])
+            assert filename.startswith("test-data-")
+            assert filename.endswith(".png")
+            assert len(filename) == len("test-data-YYYYMMDDHHMMSS.png")
+
+            # Cleanup
+            if os.path.exists(result["final_filepath"]):
+                os.remove(result["final_filepath"])

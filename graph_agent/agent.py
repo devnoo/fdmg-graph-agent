@@ -168,6 +168,7 @@ JSON response:"""
         missing_params=state.get("missing_params"),
         output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
 
 
@@ -236,6 +237,7 @@ def report_error(state: GraphState) -> GraphState:
         missing_params=state.get("missing_params"),
         output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
 
 
@@ -290,6 +292,7 @@ def handle_config(state: GraphState) -> GraphState:
         missing_params=state.get("missing_params"),
         output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
 
 
@@ -332,8 +335,8 @@ Data extraction examples:
 - "Monday: 4.1, Tuesday: 4.2" -> "data": [{{"label": "Monday", "value": 4.1}}, {{"label": "Tuesday", "value": 4.2}}]
 
 Parameter extraction examples:
-- "bar chart" or "bar graph" -> "type": "bar"
-- "line chart" or "line graph" -> "type": "line"
+- "bar chart" or "bar graph" or "staafdiagram" or "staaf grafiek" or "balkdiagram" -> "type": "bar"
+- "line chart" or "line graph" or "lijngrafiek" or "lijn grafiek" -> "type": "line"
 - "FD style" or "FD colors" or "Financial Daily" or "Financieele Dagblad" -> "style": "fd"
 - "BNR style" or "BNR colors" -> "style": "bnr"
 - "PNG format" or "as PNG" or "save as PNG" -> "format": "png"
@@ -476,6 +479,7 @@ JSON object:"""
         missing_params=state.get("missing_params"),
         output_filename=output_filename,
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
 
 
@@ -603,15 +607,48 @@ def resolve_ambiguity(state: GraphState) -> GraphState:
         missing_params=missing if missing else None,
         output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
+
+
+def detect_language(text: str) -> str:
+    """
+    Detect if text is in Dutch or English based on common keywords.
+
+    Args:
+        text: Text to analyze
+
+    Returns:
+        "nl" for Dutch, "en" for English
+    """
+    text_lower = text.lower()
+
+    # Dutch keywords and patterns
+    dutch_keywords = [
+        "grafiek", "diagram", "maak", "kan je", "wil", "graag",
+        "een", "voor", "met", "van", "het", "de", "lijn", "staaf",
+        "genereer", "creëer", "toon"
+    ]
+
+    # Count Dutch keyword occurrences
+    dutch_count = sum(1 for keyword in dutch_keywords if keyword in text_lower)
+
+    # If 2 or more Dutch keywords found, assume Dutch
+    if dutch_count >= 2:
+        logger.debug(f"detect_language: Detected Dutch ({dutch_count} keywords)")
+        return "nl"
+    else:
+        logger.debug(f"detect_language: Detected English ({dutch_count} Dutch keywords)")
+        return "en"
 
 
 def ask_clarification(state: GraphState) -> GraphState:
     """
-    Generate English clarification question for missing parameters.
+    Generate clarification question for missing parameters in user's language.
 
     This node creates a natural language question asking the user to provide
-    the missing chart parameters. Questions are always in English per architecture.
+    the missing chart parameters. Questions are generated in the same language
+    as the user's input (Dutch or English).
 
     Args:
         state: Current graph state with missing_params populated
@@ -625,19 +662,43 @@ def ask_clarification(state: GraphState) -> GraphState:
         logger.warning("ask_clarification: Called but no missing params")
         return state
 
-    # Generate appropriate question based on what's missing
-    if "type" in missing and "style" in missing:
-        question = "I have your data. What type of chart (bar/line) and which style (FD/BNR)?"
-        logger.info("ask_clarification: Asking for both type and style")
-    elif "type" in missing:
-        question = "What type of chart would you like: bar or line?"
-        logger.info("ask_clarification: Asking for type only")
-    elif "style" in missing:
-        question = "Which brand style would you like: FD or BNR?"
-        logger.info("ask_clarification: Asking for style only")
+    # Detect user's language from their last message
+    user_messages = [msg for msg in state["messages"] if msg["role"] == "user"]
+    language = "en"  # Default to English
+    if user_messages:
+        last_user_msg = user_messages[-1]["content"]
+        language = detect_language(last_user_msg)
+        logger.info(f"ask_clarification: Detected language: {language}")
+
+    # Generate appropriate question based on what's missing and language
+    if language == "nl":
+        # Dutch questions
+        if "type" in missing and "style" in missing:
+            question = "Ik heb je data. Welk type grafiek (staaf/lijn) en welke stijl (FD/BNR)?"
+            logger.info("ask_clarification: Asking for both type and style (Dutch)")
+        elif "type" in missing:
+            question = "Welk type grafiek wil je: staafdiagram of lijngrafiek?"
+            logger.info("ask_clarification: Asking for type only (Dutch)")
+        elif "style" in missing:
+            question = "Welke stijl wil je gebruiken: FD of BNR?"
+            logger.info("ask_clarification: Asking for style only (Dutch)")
+        else:
+            question = "Ik heb meer informatie nodig om je grafiek te maken."
+            logger.warning(f"ask_clarification: Unexpected missing params: {missing} (Dutch)")
     else:
-        question = "I need more information to create your chart."
-        logger.warning(f"ask_clarification: Unexpected missing params: {missing}")
+        # English questions
+        if "type" in missing and "style" in missing:
+            question = "I have your data. What type of chart (bar/line) and which style (FD/BNR)?"
+            logger.info("ask_clarification: Asking for both type and style (English)")
+        elif "type" in missing:
+            question = "What type of chart would you like: bar or line?"
+            logger.info("ask_clarification: Asking for type only (English)")
+        elif "style" in missing:
+            question = "Which brand style would you like: FD or BNR?"
+            logger.info("ask_clarification: Asking for style only (English)")
+        else:
+            question = "I need more information to create your chart."
+            logger.warning(f"ask_clarification: Unexpected missing params: {missing} (English)")
 
     # Add question to conversation
     updated_messages = state["messages"] + [{"role": "assistant", "content": question}]
@@ -653,6 +714,7 @@ def ask_clarification(state: GraphState) -> GraphState:
         missing_params=missing,
         output_filename=state.get("output_filename"),
         final_filepath=state.get("final_filepath"),
+        error_message=state.get("error_message"),
     )
 
 
@@ -664,19 +726,44 @@ def generate_chart_tool(state: GraphState) -> GraphState:
     and saves the generated chart file. It also updates the last_used_style
     and last_used_format in the config file.
 
+    If no custom output_filename is provided, this function extracts a logical
+    name from the user's prompt and generates a filename: [logical_name]-[timestamp].[ext]
+
     Args:
         state: Current graph state with input_data and chart_request populated
 
     Returns:
         Updated state with final_filepath and success message in messages
     """
-    from graph_agent.tools import matplotlib_chart_generator
+    from graph_agent.tools import matplotlib_chart_generator, extract_logical_name
     from graph_agent.config import update_last_used
+    from datetime import datetime
 
     # Get chart parameters
     chart_request = state["chart_request"]
     input_data = state["input_data"]
     output_filename = state.get("output_filename")
+
+    # If no custom filename, generate one with logical name
+    if not output_filename:
+        # Get user's original prompt (first user message)
+        user_messages = [msg for msg in state["messages"] if msg["role"] == "user"]
+        if user_messages:
+            user_prompt = user_messages[0]["content"]
+            logger.debug(f"generate_chart_tool: Extracting logical name from: {user_prompt[:100]}...")
+
+            # Extract logical name using LLM
+            llm = get_llm()
+            logical_name = extract_logical_name(user_prompt, llm)
+
+            # Generate filename: [logical_name]-[timestamp].[ext]
+            timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+            output_filename = f"{logical_name}-{timestamp}.{chart_request['format']}"
+            logger.info(f"generate_chart_tool: Generated filename: {output_filename}")
+        else:
+            # Fallback if no user messages found
+            logger.warning("generate_chart_tool: No user messages found, using default naming")
+            output_filename = None
 
     # Generate chart
     filepath = matplotlib_chart_generator(
@@ -712,6 +799,7 @@ def generate_chart_tool(state: GraphState) -> GraphState:
         missing_params=state.get("missing_params"),
         output_filename=state.get("output_filename"),
         final_filepath=filepath,
+        error_message=state.get("error_message"),
     )
 
 
@@ -776,6 +864,7 @@ File path:"""
             missing_params=state.get("missing_params"),
             output_filename=state.get("output_filename"),
             final_filepath=state.get("final_filepath"),
+            error_message=state.get("error_message"),
         )
 
     # Try to parse the Excel file
@@ -797,6 +886,12 @@ Return a JSON object with this exact format:
   "style": "fd" or "bnr" or null,
   "format": "png" or "svg" or null
 }}
+
+Parameter examples (English and Dutch):
+- "bar chart" or "staafdiagram" or "staaf grafiek" or "balkdiagram" -> "type": "bar"
+- "line chart" or "lijngrafiek" or "lijn grafiek" -> "type": "line"
+- "FD style" or "Financieele Dagblad" -> "style": "fd"
+- "BNR style" -> "style": "bnr"
 
 Set parameters to null if not mentioned.
 
@@ -868,6 +963,7 @@ JSON object:"""
             missing_params=state.get("missing_params"),
             output_filename=state.get("output_filename"),
             final_filepath=state.get("final_filepath"),
+            error_message=None,  # No error
         )
 
     except ValueError as e:
@@ -879,10 +975,11 @@ JSON object:"""
         ]
 
         # Return state with error message
+        # Set error_message to signal that an error occurred and workflow should end
         return GraphState(
             messages=updated_messages,
             interaction_mode=state["interaction_mode"],
-            intent="off_topic",  # Set to off_topic to end conversation
+            intent=state["intent"],
             has_file=state.get("has_file", False),
             config_change=state.get("config_change"),
             input_data=state.get("input_data"),
@@ -890,7 +987,35 @@ JSON object:"""
             missing_params=state.get("missing_params"),
             output_filename=state.get("output_filename"),
             final_filepath=state.get("final_filepath"),
+            error_message=error_message,  # Set error to prevent continuing to chart generation
         )
+
+
+def route_after_call_data_tool(state: GraphState) -> str:
+    """
+    Route after call_data_tool based on whether an error occurred.
+
+    If error_message is set (file not found, parse error, etc.):
+    - Route to END (error message already in conversation)
+
+    If no error:
+    - Continue to resolve_ambiguity
+
+    Args:
+        state: Current graph state with potential error_message
+
+    Returns:
+        Name of next node to execute or END
+    """
+    error_msg = state.get("error_message")
+    logger.debug(f"route_after_call_data_tool: error_message={error_msg}")
+
+    if error_msg:
+        logger.info("route_after_call_data_tool: Error occurred, routing to END")
+        return "END"
+    else:
+        logger.info("route_after_call_data_tool: No error, routing to resolve_ambiguity")
+        return "resolve_ambiguity"
 
 
 def route_after_intent(state: GraphState) -> str:
@@ -1024,8 +1149,17 @@ def create_graph() -> Any:
         },
     )
 
-    # Add edges for data extraction -> ambiguity resolution
-    workflow.add_edge("call_data_tool", "resolve_ambiguity")
+    # Add conditional routing after call_data_tool (check for errors)
+    workflow.add_conditional_edges(
+        "call_data_tool",
+        route_after_call_data_tool,
+        {
+            "END": END,
+            "resolve_ambiguity": "resolve_ambiguity",
+        },
+    )
+
+    # Add edge for extract_data -> ambiguity resolution
     workflow.add_edge("extract_data", "resolve_ambiguity")
 
     # Add conditional routing after resolve_ambiguity

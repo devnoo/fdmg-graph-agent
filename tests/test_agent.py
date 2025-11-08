@@ -4,6 +4,28 @@ import pytest
 from unittest.mock import Mock, patch
 from graph_agent.state import GraphState
 from graph_agent import agent
+from graph_agent.agent import create_graph
+
+
+class MockLLM:
+    """Mock LLM for testing that returns predefined responses in sequence."""
+
+    def __init__(self):
+        self.responses = []
+        self.call_count = 0
+
+    def add_response(self, content):
+        """Add a response to the queue."""
+        self.responses.append(content)
+
+    def invoke(self, prompt):
+        """Return next response from queue."""
+        if self.call_count >= len(self.responses):
+            raise ValueError(f"MockLLM: No more responses (called {self.call_count} times)")
+        response = Mock()
+        response.content = self.responses[self.call_count]
+        self.call_count += 1
+        return response
 
 
 def test_parse_intent_node_with_chart_request():
@@ -599,3 +621,284 @@ def test_dutch_query_with_bnr_style(tmp_path, monkeypatch):
         # Cleanup
         if os.path.exists(result["final_filepath"]):
             os.remove(result["final_filepath"])
+
+
+def test_file_not_found_error_handling():
+    """Test that non-existent Excel file is handled gracefully without crash."""
+    # Mock parse_excel_a1 to raise ValueError (file not found)
+    def mock_parse_excel_raise_error(file_path):
+        raise ValueError(f"Error: Could not find file '{file_path}'. Please check the file path and try again.")
+
+    with patch("graph_agent.tools.parse_excel_a1", side_effect=mock_parse_excel_raise_error):
+        with patch("graph_agent.agent.get_llm") as mock_get_llm:
+            # Mock the get_llm function
+            mock_llm = MockLLM()
+            mock_get_llm.return_value = mock_llm
+
+            # Create graph
+            graph = create_graph()
+
+            # Create initial state with file reference
+            initial_state = GraphState(
+                messages=[{"role": "user", "content": "Maak een grafiek van nonexistent.xlsx"}],
+                interaction_mode="direct",
+                intent="unknown",
+                has_file=False,
+                config_change=None,
+                input_data=None,
+                chart_request={"type": "bar", "style": "fd", "format": "png"},
+                missing_params=None,
+                output_filename=None,
+                final_filepath=None,
+                error_message=None,
+            )
+
+            # Configure mock LLM responses
+            # parse_intent: detect file and make_chart intent
+            mock_llm.add_response('{"intent": "make_chart", "has_file": true, "config_type": null, "config_value": null}')
+            # call_data_tool: extract file path
+            mock_llm.add_response("nonexistent.xlsx")
+
+            # Invoke graph - should NOT crash
+            result = graph.invoke(initial_state)
+
+            # Verify error message is in the conversation
+            assert len(result["messages"]) == 2  # User message + error message
+            assert result["messages"][-1]["role"] == "assistant"
+            error_msg = result["messages"][-1]["content"]
+            assert "Error:" in error_msg or "Could not find file" in error_msg
+            assert "nonexistent.xlsx" in error_msg
+
+            # Verify error_message field is set
+            assert result["error_message"] is not None
+            assert "nonexistent.xlsx" in result["error_message"]
+
+            # Verify chart was NOT generated (final_filepath is None)
+            assert result["final_filepath"] is None
+
+
+def test_file_not_found_conversational_mode():
+    """Test file not found in conversational mode - should show error and allow continuation."""
+    # Mock parse_excel_a1 to raise ValueError
+    def mock_parse_excel_raise_error(file_path):
+        raise ValueError(f"Error: Could not find file '{file_path}'.")
+
+    with patch("graph_agent.tools.parse_excel_a1", side_effect=mock_parse_excel_raise_error):
+        with patch("graph_agent.agent.get_llm") as mock_get_llm:
+            # Mock the get_llm function
+            mock_llm = MockLLM()
+            mock_get_llm.return_value = mock_llm
+
+            # Create graph
+            graph = create_graph()
+
+            # Initial state in conversational mode
+            initial_state = GraphState(
+                messages=[{"role": "user", "content": "Create chart from missing_file.xlsx"}],
+                interaction_mode="conversational",
+                intent="unknown",
+                has_file=False,
+                config_change=None,
+                input_data=None,
+                chart_request={"type": None, "style": None, "format": None},
+                missing_params=None,
+                output_filename=None,
+                final_filepath=None,
+                error_message=None,
+            )
+
+            # Configure mock responses
+            mock_llm.add_response('{"intent": "make_chart", "has_file": true, "config_type": null, "config_value": null}')
+            mock_llm.add_response("missing_file.xlsx")
+
+            # Invoke graph
+            result = graph.invoke(initial_state)
+
+            # Verify error was handled gracefully
+            assert len(result["messages"]) == 2
+            assert "Error:" in result["messages"][-1]["content"] or "Could not find" in result["messages"][-1]["content"]
+            assert result["error_message"] is not None
+            assert result["final_filepath"] is None
+
+
+def test_dutch_line_chart_detection():
+    """Test that 'lijn grafiek' is detected as line chart."""
+    from unittest.mock import Mock, patch
+    from graph_agent.agent import create_graph
+    from graph_agent.state import GraphState
+    import os
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        # parse_intent response
+        intent_response = Mock()
+        intent_response.content = '{"intent": "make_chart", "has_file": false, "config_type": null, "config_value": null}'
+
+        # extract_data response - should extract "line" from "lijn grafiek"
+        extract_response = Mock()
+        extract_response.content = (
+            '{"data": [{"label": "A", "value": 10}, {"label": "B", "value": 20}], '
+            '"type": "line", "style": "fd", "format": "png", "filename": null}'
+        )
+
+        # extract_logical_name response
+        logical_name_response = Mock()
+        logical_name_response.content = "grafiek"
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response, logical_name_response]
+        mock_get_llm.return_value = mock_llm
+
+        graph = create_graph()
+        initial_state = GraphState(
+            messages=[{"role": "user", "content": "kan je een lijn grafiek maken voor A=10, B=20"}],
+            interaction_mode="direct",
+            intent="unknown",
+            has_file=False,
+            config_change=None,
+            input_data=None,
+            chart_request={"type": None, "style": None, "format": None},
+            missing_params=None,
+            output_filename=None,
+            final_filepath=None,
+            error_message=None,
+        )
+
+        result = graph.invoke(initial_state)
+
+        # Verify line chart was detected
+        assert result["chart_request"]["type"] == "line"
+        assert result["final_filepath"] is not None
+        assert result["final_filepath"].endswith(".png")
+
+        # Cleanup
+        if os.path.exists(result["final_filepath"]):
+            os.remove(result["final_filepath"])
+
+
+def test_dutch_bar_chart_detection():
+    """Test that 'staafdiagram' is detected as bar chart."""
+    from unittest.mock import Mock, patch
+    from graph_agent.agent import create_graph
+    from graph_agent.state import GraphState
+    import os
+
+    with patch("graph_agent.agent.get_llm") as mock_get_llm:
+        mock_llm = Mock()
+
+        # parse_intent response
+        intent_response = Mock()
+        intent_response.content = '{"intent": "make_chart", "has_file": false, "config_type": null, "config_value": null}'
+
+        # extract_data response - should extract "bar" from "staafdiagram"
+        extract_response = Mock()
+        extract_response.content = (
+            '{"data": [{"label": "X", "value": 5}, {"label": "Y", "value": 10}], '
+            '"type": "bar", "style": "fd", "format": "png", "filename": null}'
+        )
+
+        # extract_logical_name response
+        logical_name_response = Mock()
+        logical_name_response.content = "staafdiagram"
+
+        mock_llm.invoke.side_effect = [intent_response, extract_response, logical_name_response]
+        mock_get_llm.return_value = mock_llm
+
+        graph = create_graph()
+        initial_state = GraphState(
+            messages=[{"role": "user", "content": "maak een staafdiagram voor X=5, Y=10"}],
+            interaction_mode="direct",
+            intent="unknown",
+            has_file=False,
+            config_change=None,
+            input_data=None,
+            chart_request={"type": None, "style": None, "format": None},
+            missing_params=None,
+            output_filename=None,
+            final_filepath=None,
+            error_message=None,
+        )
+
+        result = graph.invoke(initial_state)
+
+        # Verify bar chart was detected
+        assert result["chart_request"]["type"] == "bar"
+        assert result["final_filepath"] is not None
+
+        # Cleanup
+        if os.path.exists(result["final_filepath"]):
+            os.remove(result["final_filepath"])
+
+
+def test_language_detection_dutch():
+    """Test that Dutch text is correctly detected."""
+    from graph_agent.agent import detect_language
+
+    assert detect_language("kan je een grafiek maken") == "nl"
+    assert detect_language("maak een lijn grafiek voor de data") == "nl"
+    assert detect_language("ik wil graag een diagram") == "nl"
+    assert detect_language("genereer een staafdiagram") == "nl"
+
+
+def test_language_detection_english():
+    """Test that English text is correctly detected."""
+    from graph_agent.agent import detect_language
+
+    assert detect_language("create a bar chart") == "en"
+    assert detect_language("make a line graph") == "en"
+    assert detect_language("generate chart for data") == "en"
+    assert detect_language("A=10, B=20, C=30") == "en"
+
+
+def test_dutch_clarification_question():
+    """Test that clarification questions are asked in Dutch when user speaks Dutch."""
+    from graph_agent.agent import ask_clarification
+    from graph_agent.state import GraphState
+
+    state = GraphState(
+        messages=[{"role": "user", "content": "kan je een grafiek maken voor A=10, B=20"}],
+        interaction_mode="conversational",
+        intent="make_chart",
+        has_file=False,
+        config_change=None,
+        input_data='[{"label": "A", "value": 10}, {"label": "B", "value": 20}]',
+        chart_request={"type": None, "style": None, "format": None},
+        missing_params=["type"],
+        output_filename=None,
+        final_filepath=None,
+        error_message=None,
+    )
+
+    result = ask_clarification(state)
+
+    # Should ask in Dutch
+    question = result["messages"][-1]["content"]
+    assert "staafdiagram" in question.lower() or "lijngrafiek" in question.lower()
+    assert "welk" in question.lower() or "wil je" in question.lower()
+
+
+def test_english_clarification_question():
+    """Test that clarification questions are asked in English when user speaks English."""
+    from graph_agent.agent import ask_clarification
+    from graph_agent.state import GraphState
+
+    state = GraphState(
+        messages=[{"role": "user", "content": "create a chart for A=10, B=20"}],
+        interaction_mode="conversational",
+        intent="make_chart",
+        has_file=False,
+        config_change=None,
+        input_data='[{"label": "A", "value": 10}, {"label": "B", "value": 20}]',
+        chart_request={"type": None, "style": None, "format": None},
+        missing_params=["type"],
+        output_filename=None,
+        final_filepath=None,
+        error_message=None,
+    )
+
+    result = ask_clarification(state)
+
+    # Should ask in English
+    question = result["messages"][-1]["content"]
+    assert "bar" in question.lower() or "line" in question.lower()
+    assert "what" in question.lower() or "would you like" in question.lower()

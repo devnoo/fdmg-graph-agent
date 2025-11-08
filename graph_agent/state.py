@@ -18,6 +18,7 @@ class GraphState(TypedDict):
         missing_params: List of missing parameters that need clarification (e.g., ["type", "style"])
         output_filename: User-specified output filename (from CLI flag or in-query detection)
         final_filepath: Absolute path to the generated chart file
+        error_message: Error message string when an error occurs (e.g., file not found), or None
     """
 
     messages: list[dict]
@@ -30,3 +31,4 @@ class GraphState(TypedDict):
     missing_params: list[str] | None
     output_filename: str | None
     final_filepath: str | None
+    error_message: str | None

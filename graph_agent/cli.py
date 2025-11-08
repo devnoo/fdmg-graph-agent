@@ -52,6 +52,7 @@ def run_direct_mode(
         missing_params=None,
         output_filename=output_file,
         final_filepath=None,
+        error_message=None,
     )
 
     # Invoke graph
@@ -105,6 +106,7 @@ def run_conversational_mode() -> None:
         missing_params=None,
         output_filename=None,
         final_filepath=None,
+        error_message=None,
     )
     logger.debug("Initialized session state")
 
@@ -149,6 +151,7 @@ def run_conversational_mode() -> None:
             missing_params=session_state.get("missing_params"),
             output_filename=session_state.get("output_filename"),
             final_filepath=session_state.get("final_filepath"),
+            error_message=session_state.get("error_message"),
         )
         logger.debug(f"Updated session state with user message (total messages: {len(session_state['messages'])})")
 
