@@ -226,7 +226,7 @@ def test_parse_excel_a1_file_not_found():
     with pytest.raises(ValueError) as excinfo:
         parse_excel_a1("nonexistent.xlsx")
 
-    assert "Could not find file" in str(excinfo.value)
+    assert "Kan bestand" in str(excinfo.value)
 
 
 def test_parse_excel_a1_invalid_format():
@@ -243,7 +243,7 @@ def test_parse_excel_a1_invalid_format():
     try:
         with pytest.raises(ValueError) as excinfo:
             parse_excel_a1(temp_path)
-        assert "must be .xlsx or .xls format" in str(excinfo.value)
+        assert "moet .xlsx of .xls formaat zijn" in str(excinfo.value)
     finally:
         os.remove(temp_path)
 

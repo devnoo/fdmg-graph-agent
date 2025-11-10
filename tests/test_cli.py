@@ -18,7 +18,7 @@ def test_cli_direct_mode_with_off_topic():
     # Mock the graph to return off-topic response
     with patch("graph_agent.cli.create_graph") as mock_create_graph:
         mock_graph = Mock()
-        expected_response = "I can only help you create charts. Please ask me to make a bar or line chart."
+        expected_response = "Ik kan je alleen helpen met het maken van grafieken. Vraag me alsjeblieft om een staaf- of lijngrafiek te maken."
         mock_graph.invoke.return_value = {
             "messages": [
                 {"role": "user", "content": "make me a sandwich"},
@@ -33,7 +33,7 @@ def test_cli_direct_mode_with_off_topic():
 
         # Story 8: Off-topic requests exit with code 1
         assert result.exit_code == 1
-        assert "I can only help you create charts" in result.output
+        assert "alleen helpen met het maken van grafieken" in result.output
 
 
 def test_cli_direct_mode_with_chart_request():
@@ -113,7 +113,7 @@ def test_cli_conversational_mode_handles_requests():
 
     with patch("graph_agent.cli.create_graph") as mock_create_graph:
         mock_graph = Mock()
-        expected_msg = "I can only help you create charts. Please ask me to make a bar or line chart."
+        expected_msg = "Ik kan je alleen helpen met het maken van grafieken. Vraag me alsjeblieft om een staaf- of lijngrafiek te maken."
         mock_graph.invoke.return_value = {
             "messages": [
                 {"role": "user", "content": "test"},

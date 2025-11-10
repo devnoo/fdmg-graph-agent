@@ -63,8 +63,8 @@ def run_direct_mode(
     # Get assistant response
     assistant_message = result["messages"][-1]["content"]
 
-    # Check if this is an error (either starts with "Error:" or is a rejection message)
-    is_error = assistant_message.startswith("Error:") or assistant_message.startswith("I can only")
+    # Check if this is an error (either starts with "Fout:" or is a rejection message)
+    is_error = assistant_message.startswith("Fout:") or assistant_message.startswith("Ik kan je alleen")
 
     if is_error:
         # Print error to stderr and exit with code 1

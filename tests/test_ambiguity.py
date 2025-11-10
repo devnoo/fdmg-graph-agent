@@ -307,7 +307,7 @@ class TestReportError:
 
         assert len(result["messages"]) == 2
         assert result["messages"][1]["role"] == "assistant"
-        assert "I can only help you create charts" in result["messages"][1]["content"]
+        assert "alleen helpen met het maken van grafieken" in result["messages"][1]["content"]
 
     def test_report_error_for_missing_type(self):
         """Test error message when only chart type is missing."""
@@ -327,8 +327,8 @@ class TestReportError:
 
         assert len(result["messages"]) == 2
         assert result["messages"][1]["role"] == "assistant"
-        assert "Error: Chart type is ambiguous" in result["messages"][1]["content"]
-        assert "--type bar or --type line" in result["messages"][1]["content"]
+        assert "Fout: Grafiektype is dubbelzinnig" in result["messages"][1]["content"]
+        assert "--type bar of --type line" in result["messages"][1]["content"]
 
     def test_report_error_for_missing_style(self):
         """Test error message when only style is missing."""
@@ -348,8 +348,8 @@ class TestReportError:
 
         assert len(result["messages"]) == 2
         assert result["messages"][1]["role"] == "assistant"
-        assert "Error: Brand style not specified" in result["messages"][1]["content"]
-        assert "--style fd or --style bnr" in result["messages"][1]["content"]
+        assert "Fout: Merkstijl niet gespecificeerd" in result["messages"][1]["content"]
+        assert "--style fd of --style bnr" in result["messages"][1]["content"]
 
     def test_report_error_for_multiple_missing(self):
         """Test error message when both type and style are missing."""
@@ -369,9 +369,9 @@ class TestReportError:
 
         assert len(result["messages"]) == 2
         assert result["messages"][1]["role"] == "assistant"
-        assert "Error: Missing required parameters:" in result["messages"][1]["content"]
-        assert "Chart type: use --type bar or --type line" in result["messages"][1]["content"]
-        assert "Brand style: use --style fd or --style bnr" in result["messages"][1]["content"]
+        assert "Fout: Verplichte parameters ontbreken:" in result["messages"][1]["content"]
+        assert "Grafiektype: gebruik --type bar of --type line" in result["messages"][1]["content"]
+        assert "Merkstijl: gebruik --style fd of --style bnr" in result["messages"][1]["content"]
 
 
 class TestRouteAfterResolve:

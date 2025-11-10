@@ -215,14 +215,14 @@ def parse_excel_a1(file_path: str) -> str:
 
     # Validate file exists
     if not path.exists():
-        error_msg = f"Error: Could not find file '{file_path}'"
+        error_msg = f"Fout: Kan bestand '{file_path}' niet vinden"
         logger.error(f"parse_excel_a1: {error_msg}")
         logger.error(f"parse_excel_a1: Resolved to: {path}, which does not exist")
         raise ValueError(error_msg)
 
     # Validate file extension
     if path.suffix.lower() not in ['.xlsx', '.xls']:
-        error_msg = f"Error: File must be .xlsx or .xls format"
+        error_msg = f"Fout: Bestand moet .xlsx of .xls formaat zijn"
         logger.error(f"parse_excel_a1: {error_msg}, got {path.suffix}")
         raise ValueError(error_msg)
 
@@ -233,7 +233,7 @@ def parse_excel_a1(file_path: str) -> str:
         excel_file = pd.ExcelFile(path)
         logger.debug(f"parse_excel_a1: Found {len(excel_file.sheet_names)} sheet(s): {excel_file.sheet_names}")
     except Exception as e:
-        error_msg = f"Error: Failed to read Excel file: {str(e)}"
+        error_msg = f"Fout: Kan Excel-bestand niet lezen: {str(e)}"
         logger.error(f"parse_excel_a1: {error_msg}")
         raise ValueError(error_msg)
 
@@ -280,7 +280,7 @@ def parse_excel_a1(file_path: str) -> str:
             continue
 
     # If we get here, no valid data was found
-    error_msg = "Error: No valid data found at cell A1 in any sheet"
+    error_msg = "Fout: Geen geldige data gevonden in cel A1 in enig werkblad"
     logger.error(f"parse_excel_a1: {error_msg}")
     raise ValueError(error_msg)
 

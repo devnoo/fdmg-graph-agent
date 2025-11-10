@@ -194,33 +194,33 @@ def report_error(state: GraphState) -> GraphState:
 
     # Off-topic requests (existing from Story 2)
     if intent == "off_topic":
-        response = "I can only help you create charts. Please ask me to make a bar or line chart."
+        response = "Ik kan je alleen helpen met het maken van grafieken. Vraag me alsjeblieft om een staaf- of lijngrafiek te maken."
         logger.info("report_error: Off-topic request")
 
     # Ambiguity errors (new for Story 8)
     elif missing:
         if len(missing) == 1:
             if missing[0] == "type":
-                response = "Error: Chart type is ambiguous. Please specify using --type bar or --type line"
+                response = "Fout: Grafiektype is dubbelzinnig. Specificeer alsjeblieft met --type bar of --type line"
                 logger.info("report_error: Missing chart type")
             elif missing[0] == "style":
-                response = "Error: Brand style not specified. Please use --style fd or --style bnr, or set a default style."
+                response = "Fout: Merkstijl niet gespecificeerd. Gebruik alsjeblieft --style fd of --style bnr, of stel een standaardstijl in."
                 logger.info("report_error: Missing brand style")
             else:
-                response = "Error: Missing required parameter."
+                response = "Fout: Verplichte parameter ontbreekt."
                 logger.warning(f"report_error: Unknown missing param: {missing[0]}")
         else:
             # Multiple missing parameters
-            response = "Error: Missing required parameters:\n"
+            response = "Fout: Verplichte parameters ontbreken:\n"
             if "type" in missing:
-                response += "  - Chart type: use --type bar or --type line\n"
+                response += "  - Grafiektype: gebruik --type bar of --type line\n"
             if "style" in missing:
-                response += "  - Brand style: use --style fd or --style bnr"
+                response += "  - Merkstijl: gebruik --style fd of --style bnr"
             logger.info(f"report_error: Multiple missing params: {missing}")
 
     # Fallback
     else:
-        response = "Error: Unable to process request."
+        response = "Fout: Kan verzoek niet verwerken."
         logger.warning("report_error: Called with no clear error condition")
 
     # Add error message to messages
@@ -260,7 +260,7 @@ def handle_config(state: GraphState) -> GraphState:
 
     if not config_change:
         # No config change detected, return error message
-        response = "I couldn't understand that configuration change."
+        response = "Ik kon die configuratiewijziging niet begrijpen."
         logger.warning("handle_config: Called but no config_change in state")
     else:
         config_type = config_change.get("type")
@@ -268,14 +268,14 @@ def handle_config(state: GraphState) -> GraphState:
 
         if config_type == "style":
             save_user_preferences(default_style=config_value)
-            response = f"Your default style is now set to {config_value.upper()}."
+            response = f"Je standaardstijl is nu ingesteld op {config_value.upper()}."
             logger.info(f"handle_config: Set default style to {config_value}")
         elif config_type == "format":
             save_user_preferences(default_format=config_value)
-            response = f"Your default format is now set to {config_value.upper()}."
+            response = f"Je standaardformaat is nu ingesteld op {config_value.upper()}."
             logger.info(f"handle_config: Set default format to {config_value}")
         else:
-            response = "I couldn't understand that configuration change."
+            response = "Ik kon die configuratiewijziging niet begrijpen."
             logger.warning(f"handle_config: Unknown config_type '{config_type}'")
 
     # Add confirmation message to conversation

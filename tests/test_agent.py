@@ -90,7 +90,7 @@ def test_report_error_node_for_off_topic():
     assert len(result["messages"]) == 2
     assert result["messages"][1]["role"] == "assistant"
     expected_msg = (
-        "I can only help you create charts. Please ask me to make a bar or line chart."
+        "Ik kan je alleen helpen met het maken van grafieken. Vraag me alsjeblieft om een staaf- of lijngrafiek te maken."
     )
     assert result["messages"][1]["content"] == expected_msg
 
@@ -122,7 +122,7 @@ def test_graph_execution_off_topic():
 
         assert result["intent"] == "off_topic"
         assert len(result["messages"]) == 2
-        assert "can only help you create charts" in result["messages"][1]["content"]
+        assert "alleen helpen met het maken van grafieken" in result["messages"][1]["content"]
 
 
 def test_graph_execution_chart_request():
@@ -627,7 +627,7 @@ def test_file_not_found_error_handling():
     """Test that non-existent Excel file is handled gracefully without crash."""
     # Mock parse_excel_a1 to raise ValueError (file not found)
     def mock_parse_excel_raise_error(file_path):
-        raise ValueError(f"Error: Could not find file '{file_path}'. Please check the file path and try again.")
+        raise ValueError(f"Fout: Kan bestand '{file_path}' niet vinden. Controleer alsjeblieft het bestandspad en probeer het opnieuw.")
 
     with patch("graph_agent.tools.parse_excel_a1", side_effect=mock_parse_excel_raise_error):
         with patch("graph_agent.agent.get_llm") as mock_get_llm:
@@ -666,7 +666,7 @@ def test_file_not_found_error_handling():
             assert len(result["messages"]) == 2  # User message + error message
             assert result["messages"][-1]["role"] == "assistant"
             error_msg = result["messages"][-1]["content"]
-            assert "Error:" in error_msg or "Could not find file" in error_msg
+            assert "Fout:" in error_msg or "Kan bestand" in error_msg
             assert "nonexistent.xlsx" in error_msg
 
             # Verify error_message field is set
@@ -681,7 +681,7 @@ def test_file_not_found_conversational_mode():
     """Test file not found in conversational mode - should show error and allow continuation."""
     # Mock parse_excel_a1 to raise ValueError
     def mock_parse_excel_raise_error(file_path):
-        raise ValueError(f"Error: Could not find file '{file_path}'.")
+        raise ValueError(f"Fout: Kan bestand '{file_path}' niet vinden.")
 
     with patch("graph_agent.tools.parse_excel_a1", side_effect=mock_parse_excel_raise_error):
         with patch("graph_agent.agent.get_llm") as mock_get_llm:
@@ -716,7 +716,7 @@ def test_file_not_found_conversational_mode():
 
             # Verify error was handled gracefully
             assert len(result["messages"]) == 2
-            assert "Error:" in result["messages"][-1]["content"] or "Could not find" in result["messages"][-1]["content"]
+            assert "Fout:" in result["messages"][-1]["content"] or "Kan bestand" in result["messages"][-1]["content"]
             assert result["error_message"] is not None
             assert result["final_filepath"] is None
 
