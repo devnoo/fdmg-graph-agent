@@ -8,3 +8,26 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Environment variables
+.env
+.env.local
+
+# Generated charts (root directory)
+/chart-*.png
+/chart-*.svg
+
+# Test-generated outputs
+tests/output/
+
+# Visual regression test diff images
+tests/snapshots/*-diff.png
+
+# pytest cache
+.pytest_cache/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

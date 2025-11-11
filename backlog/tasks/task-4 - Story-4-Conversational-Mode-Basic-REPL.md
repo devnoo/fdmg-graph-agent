@@ -1,10 +1,10 @@
 ---
 id: task-4
 title: 'Story 4: Conversational Mode - Basic REPL'
-status: To Do
+status: Done
 assignee: []
 created_date: '2025-11-06 13:25'
-updated_date: '2025-11-06 13:26'
+updated_date: '2025-11-06 17:30'
 labels:
   - phase-2
   - conversational
@@ -98,15 +98,15 @@ Story 4 only implements session memory.
 
 ## Acceptance Criteria
 <!-- AC:BEGIN -->
-- [ ] #1 Running 'graph-agent' (no args) starts conversational REPL
-- [ ] #2 User can make multiple chart requests in one session
-- [ ] #3 Each chart request generates a new file with unique timestamp
-- [ ] #4 The REPL maintains message history across turns
-- [ ] #5 User can type 'exit' or 'quit' to terminate the session
-- [ ] #6 Charts are generated with correct styling when style is specified in text
-- [ ] #7 All chart generation features from Story 3 work in conversational mode
-- [ ] #8 Session state is maintained but not persisted (restarting clears history)
-- [ ] #9 LLM successfully extracts parameters (type, style, format) from natural language
+- [x] #1 Running 'graph-agent' (no args) starts conversational REPL
+- [x] #2 User can make multiple chart requests in one session
+- [x] #3 Each chart request generates a new file with unique timestamp
+- [x] #4 The REPL maintains message history across turns
+- [x] #5 User can type 'exit' or 'quit' to terminate the session
+- [x] #6 Charts are generated with correct styling when style is specified in text
+- [x] #7 All chart generation features from Story 3 work in conversational mode
+- [x] #8 Session state is maintained but not persisted (restarting clears history)
+- [x] #9 LLM successfully extracts parameters (type, style, format) from natural language
 <!-- AC:END -->
 
 ## Implementation Plan

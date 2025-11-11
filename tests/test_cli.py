@@ -18,7 +18,7 @@ def test_cli_direct_mode_with_off_topic():
     # Mock the graph to return off-topic response
     with patch("graph_agent.cli.create_graph") as mock_create_graph:
         mock_graph = Mock()
-        expected_response = "I can only help you create charts. Please ask me to make a bar or line chart."
+        expected_response = "Ik kan je alleen helpen met het maken van grafieken. Vraag me alsjeblieft om een staaf- of lijngrafiek te maken."
         mock_graph.invoke.return_value = {
             "messages": [
                 {"role": "user", "content": "make me a sandwich"},
@@ -31,8 +31,9 @@ def test_cli_direct_mode_with_off_topic():
 
         result = runner.invoke(cli.main, ["make me a sandwich"])
 
-        assert result.exit_code == 0
-        assert "I can only help you create charts" in result.output
+        # Story 8: Off-topic requests exit with code 1
+        assert result.exit_code == 1
+        assert "alleen helpen met het maken van grafieken" in result.output
 
 
 def test_cli_direct_mode_with_chart_request():
@@ -112,7 +113,7 @@ def test_cli_conversational_mode_handles_requests():
 
     with patch("graph_agent.cli.create_graph") as mock_create_graph:
         mock_graph = Mock()
-        expected_msg = "I can only help you create charts. Please ask me to make a bar or line chart."
+        expected_msg = "Ik kan je alleen helpen met het maken van grafieken. Vraag me alsjeblieft om een staaf- of lijngrafiek te maken."
         mock_graph.invoke.return_value = {
             "messages": [
                 {"role": "user", "content": "test"},
@@ -147,21 +148,26 @@ def test_cli_no_args_starts_conversational():
 
 def test_run_direct_mode():
     """Test run_direct_mode function."""
+    import pytest
+
     with patch("graph_agent.cli.create_graph") as mock_create_graph:
         mock_graph = Mock()
         mock_graph.invoke.return_value = {
             "messages": [
                 {"role": "user", "content": "test"},
-                {"role": "assistant", "content": "response"},
+                {"role": "assistant", "content": "Chart saved: /tmp/chart.png"},
             ],
             "interaction_mode": "direct",
-            "intent": "off_topic",
+            "intent": "make_chart",
         }
         mock_create_graph.return_value = mock_graph
 
-        # This should not raise an error
+        # run_direct_mode now calls sys.exit(), so we need to catch it
         with patch("builtins.print") as mock_print:
-            cli.run_direct_mode("test")
+            with pytest.raises(SystemExit) as exc_info:
+                cli.run_direct_mode("test")
+            # Should exit with code 0 for success
+            assert exc_info.value.code == 0
             # Verify print was called with response
             assert mock_print.called
 
