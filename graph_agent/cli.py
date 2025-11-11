@@ -10,9 +10,9 @@ from graph_agent.state import GraphState
 # Load environment variables from .env file
 load_dotenv()
 
-# Configure logging
+# Configure logging (default to WARNING to reduce noise)
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.WARNING,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%H:%M:%S'
 )
@@ -200,11 +200,11 @@ def run_conversational_mode() -> None:
 @click.option(
     "--log-level",
     type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR"], case_sensitive=False),
-    default="INFO",
-    help="Logging level (default: INFO)",
+    default="WARNING",
+    help="Logging level (default: WARNING)",
 )
 def main(
-    prompt: str = None, style: str = "fd", format: str = "png", type: str = "bar", output_file: str = None, log_level: str = "INFO"
+    prompt: str = None, style: str = "fd", format: str = "png", type: str = "bar", output_file: str = None, log_level: str = "WARNING"
 ) -> None:
     """
     Graph Agent CLI - Create brand-compliant charts from natural language.
